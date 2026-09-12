@@ -38,7 +38,7 @@ export interface SearchComment {
 /** 站内搜索 Item（线索卡数据源，字段→卡面映射见 README §4.6） */
 export interface SearchItem {
   Title: string;
-  ContentType: string; // 枚举待 M0 实测（文档示例见 "Article"）
+  ContentType: string; // 实测枚举："Answer" | "Article"（M0 冒烟确认）
   ContentID: string;
   ContentText: string; // 摘要级文本，非全文
   Url: string; // 带 utm 溯源
@@ -50,8 +50,8 @@ export interface SearchItem {
   AuthorBadgeText: string;
   EditTime: number;
   CommentInfoList?: SearchComment[];
-  AuthorityLevel: string;
-  RankingScore: number;
+  AuthorityLevel: string; // 实测为字符串数字，如 "4"
+  RankingScore: number; // 无界排序分，实测约 2.x，非 0~1（归一见 lib/clue/stars.ts）
 }
 
 export interface SearchData {
@@ -113,9 +113,11 @@ export interface Issue {
 export interface ClueCard {
   id: string;
   stars: 1 | 2 | 3 | 4 | 5;
-  /** 该卡来源回答所支持的立场 id（开局聚类时标注） */
+  /** 该卡来源回答所支持的立场 id（开局聚类时标注）；仅服务端可见，不下发前端 */
   supportsStance: string;
   sourceContentId: string;
+  /** 线索卡正文（ContentText 摘要，截断）；审问出示线索时的 grounding 语料 */
+  excerpt: string;
 }
 
 export interface CaseBrief {
@@ -134,6 +136,26 @@ export interface VerdictSubmission {
   stanceId?: string; // 独狼路线：不押立场牌，只给 customText
   customText?: string;
   citedClueIds: string[];
+}
+
+/** 结案请求体（POST /api/verdict） */
+export interface ClosingRequest {
+  caseId: string;
+  playerId: string; // OAuth 用户标识或匿名侦探 ID
+  verdicts: VerdictSubmission[];
+  statement?: string; // 结案陈词自由文本（可选）
+}
+
+/** 案件公开视图：立场权重与线索归属立场在结案前对玩家保密 */
+export interface PublicCaseBrief {
+  caseId: string;
+  questionTitle: string;
+  questionUrl: string;
+  hotRank: number;
+  briefing: string;
+  issues: Array<{ id: string; title: string; stances: Array<{ id: string; label: string }> }>;
+  clueCards: Array<{ id: string; stars: 1 | 2 | 3 | 4 | 5; excerpt: string }>;
+  suggestedKeywords: string[];
 }
 
 export type Grade = "S" | "A" | "B" | "C";

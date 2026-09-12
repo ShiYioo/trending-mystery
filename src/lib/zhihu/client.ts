@@ -67,6 +67,16 @@ async function postChat(body: object): Promise<Response> {
   });
 }
 
+/** 直答存在未标注的限频（实测 HTTP 429）——线性退避重试 */
+async function postChatWithRetry(body: object, attempts = 3): Promise<Response> {
+  let res = await postChat(body);
+  for (let i = 1; i < attempts && res.status === 429; i++) {
+    await new Promise((r) => setTimeout(r, 1500 * i));
+    res = await postChat(body);
+  }
+  return res;
+}
+
 async function parseChatError(res: Response): Promise<never> {
   const err = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
   throw new ZhihuApiError(res.status, err?.error?.message ?? res.statusText);
@@ -74,7 +84,7 @@ async function parseChatError(res: Response): Promise<never> {
 
 /** 非流式：开局聚类（JSON 输出需配 extractJson 容错）、结案叙事等批量调用 */
 export async function chat(model: ZhidaModel, messages: ChatMessage[]): Promise<ChatCompletionResponse> {
-  const res = await postChat({ model, messages, stream: false });
+  const res = await postChatWithRetry({ model, messages, stream: false });
   if (!res.ok) await parseChatError(res);
   return (await res.json()) as ChatCompletionResponse;
 }
@@ -84,7 +94,7 @@ export async function* chatStream(
   model: ZhidaModel,
   messages: ChatMessage[],
 ): AsyncGenerator<ChatChunk> {
-  const res = await postChat({ model, messages, stream: true });
+  const res = await postChatWithRetry({ model, messages, stream: true });
   if (!res.ok || !res.body) await parseChatError(res);
   yield* streamSse(res.body!);
 }

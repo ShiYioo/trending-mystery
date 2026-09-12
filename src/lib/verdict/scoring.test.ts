@@ -16,10 +16,10 @@ const issues: Issue[] = [
 ];
 
 const clueCards: ClueCard[] = [
-  { id: "c_03", stars: 5, supportsStance: "s_a", sourceContentId: "111" },
-  { id: "c_07", stars: 4, supportsStance: "s_a", sourceContentId: "112" },
-  { id: "c_11", stars: 2, supportsStance: "s_c", sourceContentId: "113" },
-  { id: "c_15", stars: 5, supportsStance: "s_b", sourceContentId: "114" },
+  { id: "c_03", stars: 5, supportsStance: "s_a", sourceContentId: "111", excerpt: "e1" },
+  { id: "c_07", stars: 4, supportsStance: "s_a", sourceContentId: "112", excerpt: "e2" },
+  { id: "c_11", stars: 2, supportsStance: "s_c", sourceContentId: "113", excerpt: "e3" },
+  { id: "c_15", stars: 5, supportsStance: "s_b", sourceContentId: "114", excerpt: "e4" },
 ];
 
 const brief: Pick<CaseBrief, "issues" | "clueCards"> = { issues, clueCards };

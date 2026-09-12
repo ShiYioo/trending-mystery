@@ -1,6 +1,74 @@
-// 审问引擎：人设 prompt + 已出示线索卡 + 对话历史随请求注入，直答 Agent 流式输出
-// 服务端无状态；矛盾检测标红由前端依据轮次对比呈现
+// 审问引擎（POST /api/interrogation）：
+// 人设 prompt + 已出示线索卡摘要 + 对话历史（随请求携带，服务端无状态）
+// → 直答 fast 档流式输出，SSE 原样转发增量块（前端打字机直接消费）。
+
+import { buildPersonaMessages } from "@/lib/case/prompts";
+import { caseKey, kvGetJson } from "@/lib/redis";
+import { chatStream } from "@/lib/zhihu";
+import type { CaseBrief, ChatMessage } from "@/lib/types";
+
+/** 直答多轮上下文截断：只带最近 12 条，控制长度与延迟 */
+const MAX_HISTORY = 12;
+
+interface InterrogationRequest {
+  caseId: string;
+  history: ChatMessage[];
+  /** 本轮出示的线索卡摘要（前端从公开视图的 excerpt 取） */
+  shownExcerpts?: string[];
+}
+
 export async function POST(request: Request) {
-  await request.body?.cancel();
-  return Response.json({ module: "interrogation", status: "not-implemented" });
+  let body: InterrogationRequest;
+  try {
+    body = (await request.json()) as InterrogationRequest;
+  } catch {
+    return Response.json({ error: "invalid_json" }, { status: 400 });
+  }
+  if (!body.caseId || !Array.isArray(body.history) || body.history.length === 0) {
+    return Response.json({ error: "caseId_and_history_required" }, { status: 400 });
+  }
+
+  const brief = await kvGetJson<CaseBrief>(caseKey(body.caseId));
+  if (!brief) {
+    return Response.json({ error: "case_not_found", hint: "先 GET /api/case 生成案件" }, { status: 404 });
+  }
+
+  const messages = buildPersonaMessages(
+    brief.briefing,
+    brief.questionTitle,
+    body.shownExcerpts ?? [],
+    body.history.slice(-MAX_HISTORY),
+  );
+
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        for await (const chunk of chatStream("zhida-fast-1p5", messages)) {
+          if (chunk.error || chunk.choices.some((c) => c.finish_reason === "error")) {
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({ error: chunk.error ?? { message: "stream error" } })}\n\n`,
+              ),
+            );
+            break;
+          }
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+        }
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: { message } })}\n\n`));
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+    },
+  });
 }
