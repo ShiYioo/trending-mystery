@@ -5,6 +5,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useGame } from "@/lib/game/store";
+import { sfx } from "@/lib/game/sfx";
+import { MuteButton } from "@/components/atmosphere";
 
 export function Stars({ n, className = "" }: { n: number; className?: string }) {
   return (
@@ -33,10 +35,12 @@ export function TypeWriter({
   text,
   speed = 26,
   className = "",
+  sound = true,
 }: {
   text: string;
   speed?: number;
   className?: string;
+  sound?: boolean;
 }) {
   const [n, setN] = useState(0);
   useEffect(() => {
@@ -47,11 +51,12 @@ export function TypeWriter({
           clearInterval(timer);
           return v;
         }
+        if (sound && v % 2 === 0) sfx.play("type");
         return v + 1;
       });
     }, speed);
     return () => clearInterval(timer);
-  }, [text, speed]);
+  }, [text, speed, sound]);
   return (
     <span className={className}>
       {text.slice(0, n)}
@@ -70,14 +75,15 @@ const ROOMS = [
 export function Nav() {
   const { caseBrief, profile } = useGame();
   return (
-    <header className="sticky top-0 z-40 border-b border-brass-600/25 bg-ink-950/90 backdrop-blur">
-      <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
-        <Link href="/" className="font-[family-name:var(--font-dossier)] text-sm tracking-[0.3em] text-brass-300">
-          热搜疑云
+    <header className="sticky top-0 z-40 border-b border-signal-400/20 bg-ink-950/90 backdrop-blur-xl">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-5 gap-y-3 px-4 py-3 md:px-6">
+        <Link href="/" className="group flex items-center gap-3 font-[family-name:var(--font-dossier)] text-sm tracking-[0.25em] text-paper-100">
+          <span className="flex h-7 w-7 items-center justify-center border border-signal-400/60 text-signal-300 transition-transform group-hover:rotate-12">⌕</span>
+          <span>热搜疑云 <small className="ml-1 text-[9px] tracking-[0.1em] text-signal-300">/ TM-01</small></span>
         </Link>
         {caseBrief && (
-          <span className="font-[family-name:var(--font-dossier)] text-xs text-paper-600">
-            案件 {caseBrief.caseId}
+          <span className="border-l border-ink-600 pl-4 font-[family-name:var(--font-dossier)] text-[10px] tracking-widest text-paper-600">
+            <span className="status-dot" />LIVE / {caseBrief.caseId}
           </span>
         )}
         <nav className="ml-auto flex flex-wrap items-center gap-2">
@@ -85,11 +91,13 @@ export function Nav() {
             <Link
               key={room.href}
               href={room.href}
-              className="border border-ink-600 px-2 py-1 font-[family-name:var(--font-dossier)] text-xs text-paper-400 transition-colors hover:border-brass-400 hover:text-brass-300"
+              onClick={() => sfx.play("click")}
+              className="border border-ink-600 px-2.5 py-1.5 font-[family-name:var(--font-dossier)] text-[10px] text-paper-400 transition-colors hover:border-signal-400 hover:text-signal-300"
             >
               {room.label}
             </Link>
           ))}
+          <MuteButton />
           {profile ? (
             <span
               className="flex items-center gap-2 border border-brass-400/50 px-2 py-1"

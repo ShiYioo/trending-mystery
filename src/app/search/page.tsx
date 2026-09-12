@@ -7,7 +7,9 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Stamp, Stars } from "@/components/game";
+import { TiltCard } from "@/components/card3d";
 import { searchClue } from "@/lib/game/api";
+import { sfx } from "@/lib/game/sfx";
 import { useGame, type CollectedCard } from "@/lib/game/store";
 
 export default function SearchPage() {
@@ -25,6 +27,7 @@ function SearchRoom() {
   const [results, setResults] = useState<CollectedCard[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [flipped, setFlipped] = useState<string[]>([]);
 
   const run = useCallback(
     async (q: string) => {
@@ -64,13 +67,18 @@ function SearchRoom() {
   const archivedCount = collected.filter((c) => c.cardId).length;
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[1fr_320px]">
+    <div className="investigation-room grid gap-8 lg:grid-cols-[1fr_320px]">
       <div className="space-y-6">
         {/* 档案检索 */}
-        <section className="paper-card p-6">
-          <h1 className="font-[family-name:var(--font-dossier)] text-sm tracking-[0.3em] text-brass-400">
-            Ⅱ 档案检索系统
-          </h1>
+        <section className="paper-card scanline p-6 md:p-8">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="eyebrow"><span className="status-dot" />ROOM 02 / EVIDENCE LAB</p>
+              <h1 className="mt-2 text-2xl text-paper-100">档案检索系统</h1>
+            </div>
+            <span className="font-[family-name:var(--font-dossier)] text-[10px] tracking-widest text-paper-600">真实数据流 · ONLINE</span>
+          </div>
+          <div className="hud-rule mt-5" />
           <form
             className="mt-4 flex gap-3"
             onSubmit={(e) => {
@@ -122,8 +130,17 @@ function SearchRoom() {
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: Math.min(i * 0.06, 0.5) }}
-              className={`paper-card p-5 ${isCollected(card.contentId) ? "border-brass-400/50" : ""}`}
+              draggable
+              onDragStart={(event) => (event as unknown as React.DragEvent<HTMLDivElement>).dataTransfer.setData("text/evidence-id", card.contentId)}
             >
+              <TiltCard className={`evidence-card paper-card p-5 ${isCollected(card.contentId) ? "border-brass-400/50" : ""}`}>
+              {flipped.includes(card.contentId) ? (
+                <div className="min-h-36 border border-signal-400/20 bg-ink-950/35 p-4">
+                  <p className="eyebrow">REVERSE / 证据背面</p>
+                  <p className="mt-4 font-[family-name:var(--font-dossier)] text-xs leading-loose text-paper-400">来源：{card.author}<br />互动量：{card.votes.toLocaleString()} 票<br />证据等级：{card.cardId ? "核心证据" : "外围情报"}</p>
+                  <button className="mt-3 font-[family-name:var(--font-dossier)] text-[10px] tracking-widest text-brass-300 hover:underline" onClick={() => setFlipped((items) => items.filter((id) => id !== card.contentId))}>↻ 翻回正面</button>
+                </div>
+              ) : <>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <Stars n={card.stars} />
                 <span className="font-[family-name:var(--font-dossier)] text-xs text-paper-400">
@@ -161,8 +178,12 @@ function SearchRoom() {
                 </div>
               )}
               <div className="mt-4 flex items-center gap-3">
+                <button className="border border-ink-600 px-3 py-1.5 font-[family-name:var(--font-dossier)] text-[10px] tracking-widest text-paper-400 hover:border-signal-400 hover:text-signal-300" onClick={() => setFlipped((items) => [...items, card.contentId])}>翻面</button>
                 <button
-                  onClick={() => toggleCollect(card)}
+                  onClick={() => {
+                    sfx.play("flip");
+                    toggleCollect(card);
+                  }}
                   className={`px-4 py-1.5 font-[family-name:var(--font-dossier)] text-xs tracking-widest transition-colors ${
                     isCollected(card.contentId)
                       ? "border border-brass-400 text-brass-300"
@@ -178,8 +199,10 @@ function SearchRoom() {
                   className="font-[family-name:var(--font-dossier)] text-xs text-paper-600 underline-offset-4 hover:text-brass-400 hover:underline"
                 >
                   查看原文 ↗
-                  </a>
+                </a>
               </div>
+              </>}
+            </TiltCard>
             </motion.article>
           ))}
         </div>
@@ -187,6 +210,21 @@ function SearchRoom() {
 
       {/* 侧栏：疑点清单 + 档案袋 */}
       <aside className="space-y-6 lg:sticky lg:top-20 lg:self-start">
+        <section className="paper-card evidence-drop p-5" onDragOver={(event) => event.preventDefault()} onDrop={(event) => {
+          event.preventDefault();
+          const id = event.dataTransfer.getData("text/evidence-id");
+          const card = results?.find((item) => item.contentId === id);
+          if (card && !isCollected(id)) {
+            sfx.play("flip");
+            toggleCollect(card);
+          }
+        }}>
+          <p className="eyebrow">DROP ZONE / 证据投放台</p>
+          <div className="mt-4 flex min-h-24 items-center justify-center text-center">
+            <p className="max-w-48 font-[family-name:var(--font-dossier)] text-xs leading-relaxed tracking-wider text-paper-600">拖动线索卡至此<br /><span className="text-signal-300">收入实体档案袋</span></p>
+          </div>
+        </section>
+
         <section className="paper-card p-5">
           <h2 className="font-[family-name:var(--font-dossier)] text-xs tracking-[0.25em] text-brass-400">
             疑点清单

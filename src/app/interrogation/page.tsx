@@ -19,6 +19,8 @@ export default function InterrogationPage() {
   const [streaming, setStreaming] = useState(false);
   const [streamText, setStreamText] = useState("");
   const [systemNote, setSystemNote] = useState<string | null>(null);
+  const [deskOver, setDeskOver] = useState(false);
+  const [lastDropped, setLastDropped] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -80,11 +82,11 @@ export default function InterrogationPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <section className="paper-card p-6">
+    <div className="investigation-room mx-auto max-w-4xl space-y-6">
+      <section className="paper-card scanline p-6 md:p-8">
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="font-[family-name:var(--font-dossier)] text-sm tracking-[0.3em] text-brass-400">
-            Ⅲ 审问室
+          <h1 className="eyebrow">
+            <span className="status-dot" />ROOM 03 / INTERROGATION
           </h1>
           <span className="font-[family-name:var(--font-dossier)] text-xs text-paper-600">
             当事人 · 本案知情者
@@ -99,10 +101,63 @@ export default function InterrogationPage() {
       </section>
 
       {/* 对话区 */}
-      <section className="paper-card min-h-[320px] space-y-4 p-6">
+      <section className="paper-card relative min-h-[520px] space-y-4 overflow-hidden p-4 md:p-8">
+        <div className="room-stage -mx-4 -mt-4 mb-3 md:-mx-8 md:-mt-8">
+          <span className="room-light" />
+          <div className="absolute left-5 top-5 z-10 font-[family-name:var(--font-dossier)] text-[10px] tracking-widest text-signal-300"><span className="status-dot" />ROOM 03 · SUBJECT ONLINE</div>
+          <div className="absolute bottom-5 left-1/2 z-10 -translate-x-1/2 text-center font-[family-name:var(--font-dossier)] text-[10px] tracking-widest text-paper-600">DROP EVIDENCE TO CHALLENGE</div>
+        </div>
+        <div
+          className={`interrogation-desk ${deskOver ? "evidence-drop is-over" : ""} p-4 pt-8`}
+          onDragOver={(event) => { event.preventDefault(); setDeskOver(true); }}
+          onDragLeave={() => setDeskOver(false)}
+          onDrop={(event) => {
+            event.preventDefault();
+            setDeskOver(false);
+            const id = event.dataTransfer.getData("text/evidence-id");
+            if (id && collected.some((card) => card.contentId === id)) {
+              setPendingEvidence((items) => items.includes(id) ? items : [...items, id]);
+              setLastDropped(id);
+              setSystemNote("证物已锁定在审问桌。现在问他一个无法回避的问题。");
+              window.setTimeout(() => setLastDropped(null), 900);
+            }
+          }}
+        >
+          {shownCards.length === 0 ? <p className="flex min-h-12 items-center justify-center font-[family-name:var(--font-dossier)] text-xs tracking-widest text-paper-600">把线索卡拖到这里，逼他正面回应</p> : <div className="flex flex-wrap gap-2">{shownCards.map((card) => <div key={card.contentId} className={`evidence-lock border border-brass-400/70 bg-ink-950/70 px-3 py-2 text-xs text-brass-300 ${lastDropped === card.contentId ? "ring-2 ring-signal-300" : ""}`}>⌁ 证物 · {card.title.slice(0, 22)}</div>)}</div>}
+        </div>
+        <div className="flex items-center gap-4 border-b border-ink-700/60 pb-4">
+          <div className={`relative shrink-0 ${streaming ? "portrait-speaking" : ""}`}>
+            <svg width="64" height="76" viewBox="0 0 120 140" aria-hidden className="portrait-breath">
+              <ellipse cx="60" cy="72" rx="46" ry="62" fill="#120e09" stroke="#d4a24e" strokeOpacity="0.35" strokeWidth="2" />
+              <g fill="#080604">
+                <path d="M22 52 Q60 34 98 52 L103 59 Q60 50 17 59 Z" />
+                <path d="M42 51 Q44 30 60 28 Q76 30 78 51 Z" />
+                <circle cx="60" cy="60" r="13" />
+                <path d="M24 134 Q34 96 60 93 Q86 96 96 134 Z" />
+              </g>
+              <g fill="none" stroke="#d4a24e" strokeOpacity="0.5" strokeWidth="1.2">
+                <path d="M44 49 Q46 31 60 29" />
+                <path d="M26 132 Q36 98 60 95" />
+              </g>
+            </svg>
+            {streaming && (
+              <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 font-[family-name:var(--font-dossier)] text-[9px] tracking-widest text-brass-300">
+                供述中
+              </span>
+            )}
+          </div>
+          <div>
+            <p className="font-[family-name:var(--font-dossier)] text-xs tracking-[0.25em] text-brass-400">
+              当事人 · 本案知情者
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-paper-600">
+              {streaming ? "他正在斟酌措辞……" : "「那晚的事……你想从哪里问起？」"}
+            </p>
+          </div>
+        </div>
         {history.length === 0 && !streaming && (
-          <p className="pt-16 text-center font-[family-name:var(--font-dossier)] text-sm tracking-widest text-paper-600">
-            「那晚的事……你想从哪里问起？」
+          <p className="pt-10 text-center font-[family-name:var(--font-dossier)] text-sm tracking-widest text-paper-600">
+            质询将从下一行开始。带上你的证物。
           </p>
         )}
         {history.map((m, i) =>
@@ -164,11 +219,13 @@ export default function InterrogationPage() {
             return (
               <button
                 key={c.contentId}
-                onClick={() =>
+               onClick={() =>
                   setPendingEvidence((p) =>
                     p.includes(c.contentId) ? p.filter((x) => x !== c.contentId) : [...p, c.contentId],
                   )
                 }
+                draggable
+                onDragStart={(event) => (event as unknown as React.DragEvent<HTMLButtonElement>).dataTransfer.setData("text/evidence-id", c.contentId)}
                 className={`flex items-center gap-1.5 border px-2 py-1 text-xs transition-colors ${
                   active ? "border-brass-400 bg-brass-600/20 text-brass-300" : "border-ink-600 text-paper-400 hover:border-paper-400"
                 }`}

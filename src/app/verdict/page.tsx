@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Stamp, Stars, TypeWriter } from "@/components/game";
 import { fetchBoard, submitVerdict } from "@/lib/game/api";
+import { sfx } from "@/lib/game/sfx";
 import { useGame, type VerdictResponse } from "@/lib/game/store";
 import type { VerdictSubmission } from "@/lib/types";
 
@@ -21,6 +22,8 @@ export default function VerdictPage() {
   const [error, setError] = useState<string | null>(null);
   const [board, setBoard] = useState<Array<{ playerId: string; score: number }>>([]);
   const [copied, setCopied] = useState(false);
+  const [coreIssue, setCoreIssue] = useState<string | null>(null);
+  const [coreOver, setCoreOver] = useState(false);
 
   useEffect(() => {
     if (result) fetchBoard(result.caseId).then(setBoard).catch(() => setBoard([]));
@@ -66,6 +69,7 @@ export default function VerdictPage() {
         statement: statement.trim() || undefined,
       });
       setResult(res);
+      sfx.play("drum");
     } catch (e) {
       setError(e instanceof Error ? e.message : "结案失败");
     } finally {
@@ -74,14 +78,26 @@ export default function VerdictPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-8">
-      <section className="paper-card p-6">
-        <h1 className="font-[family-name:var(--font-dossier)] text-sm tracking-[0.3em] text-brass-400">
-          Ⅳ 结案室
+    <div className="investigation-room mx-auto max-w-4xl space-y-8">
+      <section className="paper-card scanline p-6 md:p-8">
+        <p className="eyebrow"><span className="status-dot" />ROOM 04 / VERDICT CHAMBER</p>
+        <h1 className="mt-2 text-2xl text-paper-100">
+          结案室 · 推理核心
         </h1>
         <p className="mt-2 text-xs leading-relaxed text-paper-600">
           押注你判断的主流立场；只指认支持它的已归档证物——指认错误会倒扣。立场牌背后的社区权重，结案才翻牌。
         </p>
+        <div className="room-stage mt-6 flex items-end justify-center pb-5">
+          <span className="room-light" />
+          <div
+            className={`relative z-10 flex h-24 w-44 cursor-pointer items-center justify-center border bg-ink-950/85 text-center font-[family-name:var(--font-dossier)] text-[10px] tracking-widest shadow-[0_15px_30px_rgba(0,0,0,0.5)] transition-all ${coreOver ? "border-brass-300 shadow-[0_0_30px_rgba(219,169,79,0.35)]" : "border-brass-400/40"}`}
+            onDragOver={(event) => { event.preventDefault(); setCoreOver(true); }}
+            onDragLeave={() => setCoreOver(false)}
+            onDrop={(event) => { event.preventDefault(); setCoreOver(false); setCoreIssue(event.dataTransfer.getData("text/stance-id")); sfx.play("stamp"); }}
+          >
+            {coreIssue ? <span className="text-brass-300">已插入立场<br /><strong className="mt-2 block text-sm">{coreIssue}</strong></span> : <>CONSENSUS<br />CORE<br /><span className="mt-2 block text-paper-600">拖入立场牌</span></>}
+          </div>
+        </div>
       </section>
 
       {caseBrief.issues.map((issue, idx) => (
@@ -96,19 +112,25 @@ export default function VerdictPage() {
             {issue.stances.map((stance) => {
               const chosen = selections[issue.id] === stance.id;
               return (
-                <button
+                <motion.button
                   key={stance.id}
-                  onClick={() => setSelections((s) => ({ ...s, [issue.id]: stance.id }))}
-                  className={`paper-card p-4 text-left transition-all ${
-                    chosen ? "-rotate-1 border-brass-400 shadow-[0_0_18px_rgba(212,162,78,0.25)]" : "opacity-80 hover:opacity-100"
-                  }`}
+                  onClick={() => {
+                    sfx.play("flip");
+                    setSelections((s) => ({ ...s, [issue.id]: stance.id }));
+                  }}
+                  draggable
+                  onDragStart={(event) => (event as unknown as React.DragEvent<HTMLButtonElement>).dataTransfer.setData("text/stance-id", stance.label)}
+                  whileHover={{ y: -5, rotateX: 6 }}
+                  whileTap={{ scale: 0.97 }}
+                  style={{ transformPerspective: 800 }}
+                  className={`paper-card p-4 text-left ${chosen ? "-rotate-1 border-brass-400 shadow-[0_0_18px_rgba(212,162,78,0.25)]" : "opacity-80 hover:opacity-100"}`}
                 >
                   <span className="font-[family-name:var(--font-dossier)] text-[10px] tracking-widest text-paper-600">
                     立场牌
                   </span>
                   <p className="mt-1 text-base text-paper-100">{stance.label}</p>
                   {chosen && <span className="mt-2 inline-block font-[family-name:var(--font-dossier)] text-[10px] text-brass-300">✓ 已押注</span>}
-                </button>
+                </motion.button>
               );
             })}
           </div>
@@ -189,7 +211,9 @@ function ClosingResult({
   onRestart: () => void;
 }) {
   const [total, setTotal] = useState(0);
+  const [impact, setImpact] = useState(false);
   useEffect(() => {
+    sfx.play("reveal");
     const target = result.score.total;
     const step = Math.max(target / 40, 0.5);
     const timer = setInterval(() => {
@@ -207,12 +231,17 @@ function ClosingResult({
   const { score, consensus } = result;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-8">
+    <div className="investigation-room mx-auto max-w-4xl space-y-8">
       {/* 翻牌揭示共识 */}
-      <section className="paper-card p-6">
-        <h1 className="font-[family-name:var(--font-dossier)] text-sm tracking-[0.3em] text-brass-400">
+      <section className="paper-card scanline p-6 md:p-8">
+        <p className="eyebrow"><span className="status-dot" />ROOM 04 / VERDICT CHAMBER</p>
+        <h1 className="mt-2 text-2xl text-paper-100">
           结案 · 共识翻牌
         </h1>
+        <div className="room-stage mt-6 flex items-end justify-center pb-5">
+          <span className="room-light" />
+          <div className="relative z-10 flex h-20 w-36 items-center justify-center border border-brass-400/40 bg-ink-950/80 font-[family-name:var(--font-dossier)] text-xs tracking-widest text-brass-300 shadow-[0_12px_25px_rgba(0,0,0,0.5)]">CONSENSUS<br />CORE</div>
+        </div>
         <div className="mt-6 space-y-8">
           {consensus.map((issue) => (
             <div key={issue.issueId}>
@@ -256,16 +285,25 @@ function ClosingResult({
         </div>
       </section>
 
-      {/* 评级 + 分项 */}
-      <section className="paper-card flex flex-wrap items-center gap-8 p-8">
+      {/* 评级 + 分项：印章砸落震屏 + 尘埃迸发 */}
+      <motion.section
+        animate={impact ? { x: [0, -9, 9, -5, 5, 0] } : { x: 0 }}
+        transition={{ duration: 0.45 }}
+        className="paper-card relative flex flex-wrap items-center gap-8 overflow-visible p-8"
+      >
         <motion.div
-          initial={{ scale: 2.2, opacity: 0, rotate: -18 }}
+          initial={{ scale: 2.4, opacity: 0, rotate: -20 }}
           animate={{ scale: 1, opacity: 1, rotate: -6 }}
-          transition={{ type: "spring", stiffness: 200, damping: 14, delay: 0.9 }}
-          className="stamp border-brass-400 px-5 py-3 text-3xl text-brass-300"
+          transition={{ type: "spring", stiffness: 240, damping: 15, delay: 0.9 }}
+          onAnimationComplete={() => {
+            setImpact(true);
+            sfx.play("stamp");
+          }}
+          className="stamp relative z-10 border-brass-400 px-5 py-3 text-3xl text-brass-300"
         >
           {score.grade} · {GRADE_TITLE[score.grade]}
         </motion.div>
+        {impact && <DustBurst />}
         <div className="flex-1 space-y-2">
           <p className="font-[family-name:var(--font-dossier)] text-4xl text-paper-100">
             {Math.round(total)}
@@ -288,7 +326,7 @@ function ClosingResult({
             </div>
           ))}
         </div>
-      </section>
+      </motion.section>
 
       {/* 结案报告 */}
       <section className="paper-card border-l-4 border-l-brass-600/60 p-6">
@@ -340,6 +378,34 @@ function ClosingResult({
           返回案件面板 →
         </Link>
       </div>
+    </div>
+  );
+}
+
+/** 印章砸落时的尘埃迸发（一次性） */
+function DustBurst() {
+  const particles = Array.from({ length: 14 }, (_, i) => {
+    const angle = (Math.PI * 2 * i) / 14 + Math.random() * 0.4;
+    const dist = 46 + Math.random() * 52;
+    return {
+      x: Math.cos(angle) * dist,
+      y: Math.sin(angle) * dist * 0.6,
+      size: 2 + Math.random() * 3,
+      delay: Math.random() * 0.05,
+    };
+  });
+  return (
+    <div className="pointer-events-none absolute left-10 top-10 z-0" aria-hidden>
+      {particles.map((p, i) => (
+        <motion.span
+          key={i}
+          initial={{ x: 0, y: 0, opacity: 0.9, scale: 1 }}
+          animate={{ x: p.x, y: p.y, opacity: 0, scale: 0.3 }}
+          transition={{ duration: 0.7 + p.delay * 4, ease: "easeOut" }}
+          className="absolute rounded-full bg-brass-300"
+          style={{ width: p.size, height: p.size }}
+        />
+      ))}
     </div>
   );
 }
