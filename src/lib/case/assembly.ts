@@ -1,6 +1,7 @@
 // 案件装配纯函数：LLM 只负责语义归类，权重与卡片全部由代码计算——AI 不当裁判（README §4.5）。
 
 import { starRating } from "../clue/stars";
+import { cleanExcerpt, excerptFragment, isRelatedTo } from "../clue/clean";
 import type { CaseBrief, ClueCard, Issue, PublicCaseBrief, SearchItem } from "../types";
 import type { ClusterResult } from "./prompts";
 
@@ -41,7 +42,7 @@ export function buildClueCards(
     }),
     supportsStance: stanceByIdx.get(i) ?? "s_none",
     sourceContentId: it.ContentID,
-    excerpt: it.ContentText.slice(0, 200),
+    excerpt: cleanExcerpt(it.ContentText).slice(0, 200),
   }));
 }
 
@@ -67,21 +68,27 @@ export function toPublicBrief(brief: CaseBrief): PublicCaseBrief {
 /**
  * 降级聚类（直答额度不可用时）：无 LLM，按赞数中位把回答分成"多数派/少数派"两营，
  * 权重照常由真实赞数计算——玩法闭环完整，只是立场标签退化为通用命名。
+ * 简报两段式：速览取最切题回答的开头（弃用拼接感强的热榜 Summary），
+ * 风向条目经二元组相关性过滤，挡掉搜索混入的无关病毒回答。
  */
 export function fallbackCluster(
   questionTitle: string,
   summary: string,
-  items: Array<{ Title: string; VoteUpCount: number }>, // 需已按赞数降序
+  items: Array<{ excerpt: string; votes: number }>, // 需已按赞数降序
 ): ClusterResult {
   const majority = Math.ceil(items.length / 2);
-  const top = items.slice(0, 3);
+  const related = items.filter((i) => isRelatedTo(questionTitle, i.excerpt));
+  const source = related.length > 0 ? related : items;
+  const views = source.slice(1, 4).map((i) => `· ${excerptFragment(i.excerpt, 76)}（${i.votes.toLocaleString()} 赞）`);
+  const briefing = [
+    "【档案速览】",
+    excerptFragment(source[0].excerpt, 110) || excerptFragment(summary, 110) || excerptFragment(questionTitle, 110),
+    "",
+    "【社区风向】",
+    ...(views.length ? views : ["· 暂无足够切题的高赞观点，请进入搜查取证自行研判。"]),
+  ].join("\n");
   return {
-    briefing:
-      `【档案速览】${questionTitle}\n` +
-      (summary ? `${summary}\n` : "") +
-      "社区高赞观点速览：\n" +
-      top.map((i) => `· ${i.Title.slice(0, 40)}（${i.VoteUpCount} 赞）`).join("\n") +
-      "\n（注：分析引擎今日离线，本简报由档案科速记拼装，立场牌为通用分派。）",
+    briefing,
     issues: [
       {
         title: "社区的主流判断是哪一方？",

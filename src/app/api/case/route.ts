@@ -5,6 +5,7 @@
 
 import { normalizeKeyword } from "@/lib/clue/normalize";
 import { starRating } from "@/lib/clue/stars";
+import { cleanExcerpt, isRelatedTo } from "@/lib/clue/clean";
 import { applyWeights, buildClueCards, fallbackCluster, toPublicBrief } from "@/lib/case/assembly";
 import { buildClusterMessages, type ClusterResult } from "@/lib/case/prompts";
 import { llmEnabled } from "@/lib/env";
@@ -76,6 +77,10 @@ export async function GET(request: Request) {
     }
 
     // 聚类：一次 thinking 调用产出简报+争议点+归属+检索词；直答不可用（或失败）时走降级聚类
+    // 送入聚类前先做相关性预过滤——无关高赞回答若混入并被归派，会按赞数污染 clusterWeight；
+    // 过滤后不足 3 条则放弃过滤（宁滥勿缺），下游映射/权重/线索卡统一使用 clusterItems
+    const related = items.filter((it) => isRelatedTo(picked.Title, it.ContentText));
+    const clusterItems = related.length >= 3 ? related : items;
     let parsed: ClusterResult | null = null;
     if (llmEnabled()) {
       try {
@@ -84,10 +89,10 @@ export async function GET(request: Request) {
             "zhida-thinking-1p5",
             buildClusterMessages(
               picked.Title,
-              items.map((it, i) => ({
+              clusterItems.map((it, i) => ({
                 idx: i,
                 title: it.Title,
-                excerpt: it.ContentText.slice(0, 200),
+                excerpt: cleanExcerpt(it.ContentText).slice(0, 200),
                 votes: it.VoteUpCount,
               })),
             ),
@@ -99,14 +104,20 @@ export async function GET(request: Request) {
       }
     }
     const degraded = parsed === null;
-    const cluster = parsed ?? fallbackCluster(picked.Title, picked.Summary, items);
+    const cluster =
+      parsed ??
+      fallbackCluster(
+        picked.Title,
+        picked.Summary,
+        clusterItems.map((it) => ({ excerpt: it.ContentText, votes: it.VoteUpCount })),
+      );
 
     const issues: Issue[] = cluster.issues.map((iss, i) => ({
       id: `issue_${i + 1}`,
       title: iss.title,
       stances: iss.stances.map((s) => ({ id: s.id, label: s.label, clusterWeight: 0 })),
     }));
-    applyWeights(issues, items.map((it) => ({ votes: it.VoteUpCount })), cluster.items);
+    applyWeights(issues, clusterItems.map((it) => ({ votes: it.VoteUpCount })), cluster.items);
 
     const brief: CaseBrief = {
       caseId,
@@ -115,7 +126,7 @@ export async function GET(request: Request) {
       hotRank: hot.Items.indexOf(picked) + 1,
       briefing: cluster.briefing,
       issues,
-      clueCards: buildClueCards(items, cluster.items),
+      clueCards: buildClueCards(clusterItems, cluster.items),
       suggestedKeywords: cluster.keywords,
       degraded,
     };

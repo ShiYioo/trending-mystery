@@ -2,6 +2,7 @@
 // 归一化 → 缓存 → 配额 → 真实搜索 → 服务端装配视图模型：
 //   星级（真实三字段）、归档匹配（命中案件底表的卡带 cardId，结案时才可指认）、线人低语（精选评论）。
 
+import { cleanExcerpt } from "@/lib/clue/clean";
 import { normalizeKeyword } from "@/lib/clue/normalize";
 import { starRating } from "@/lib/clue/stars";
 import { caseKey, cacheAside, consumeQuota, kvGetJson, searchCacheKey } from "@/lib/redis";
@@ -34,7 +35,7 @@ export async function GET(request: Request) {
       contentId: it.ContentID,
       title: it.Title,
       contentType: it.ContentType,
-      excerpt: it.ContentText,
+      excerpt: cleanExcerpt(it.ContentText),
       url: it.Url,
       votes: it.VoteUpCount,
       author: it.AuthorName,
@@ -48,7 +49,7 @@ export async function GET(request: Request) {
       cardId: pool.get(it.ContentID) ?? null,
       whispers: (it.CommentInfoList ?? [])
         .slice(0, WHISPERS_PER_CARD)
-        .map((c) => c.Content),
+        .map((c) => cleanExcerpt(c.Content)),
     }));
 
     return Response.json({ keyword, caseId, count: items.length, items });

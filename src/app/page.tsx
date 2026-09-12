@@ -90,7 +90,7 @@ export default function CasePanel() {
           ↗ 原始案发地（知乎问题）
         </a>
 
-        <div className="mt-8 border-l-2 border-brass-600/50 pl-5 leading-loose text-paper-200">
+        <div className="mt-8 whitespace-pre-wrap border-l-2 border-brass-600/50 pl-5 leading-loose text-paper-200">
           <TypeWriter text={caseBrief.briefing} speed={22} />
         </div>
 
