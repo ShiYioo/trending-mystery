@@ -149,7 +149,13 @@ export async function recordScore(caseId: string, playerId: string, score: numbe
     boardMem.set(caseId, board);
     return;
   }
-  await getRedis().zadd(boardKey(caseId), score, playerId);
+  const key = boardKey(caseId);
+  const redis = getRedis();
+  await redis.zadd(key, score, playerId);
+  // 首次写入挂 7 天 TTL：与全系统按日自清理一致，覆盖次日回看，M3 历史战绩留余量
+  if ((await redis.ttl(key)) === -1) {
+    await redis.expire(key, 7 * 24 * 3600);
+  }
 }
 
 export async function topDetectives(

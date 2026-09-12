@@ -323,7 +323,7 @@ MVP 可砍掉③中的陈词一致分，只留"开局聚类 + 查表算分 + 报
 | `quota:search:{日期}` / `quota:hotlist:{日期}` | 配额计数器：`INCR` + `EXPIRE 48h`，全环境共用一本账，按日自动翻篇 |
 | `cache:hotlist:{小时}` | 热榜整表缓存 |
 | `cache:search:{caseId}:{归一化关键词}` | 搜索结果缓存，全服共享 |
-| `board:case:{caseId}` | 今日神探榜：ZSET 两个命令 |
+| `board:case:{caseId}` | 今日神探榜：ZSET 两个命令；首次写入挂 7 天 TTL，与全系统按日自清理一致 |
 
 ---
 
