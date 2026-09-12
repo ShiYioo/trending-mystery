@@ -68,7 +68,7 @@ const ROOMS = [
 ];
 
 export function Nav() {
-  const { caseBrief } = useGame();
+  const { caseBrief, profile } = useGame();
   return (
     <header className="sticky top-0 z-40 border-b border-brass-600/25 bg-ink-950/90 backdrop-blur">
       <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
@@ -80,7 +80,7 @@ export function Nav() {
             案件 {caseBrief.caseId}
           </span>
         )}
-        <nav className="ml-auto flex flex-wrap gap-2">
+        <nav className="ml-auto flex flex-wrap items-center gap-2">
           {ROOMS.map((room) => (
             <Link
               key={room.href}
@@ -90,6 +90,26 @@ export function Nav() {
               {room.label}
             </Link>
           ))}
+          {profile ? (
+            <span
+              className="flex items-center gap-2 border border-brass-400/50 px-2 py-1"
+              title={profile.headline}
+            >
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-brass-600 font-[family-name:var(--font-dossier)] text-[10px] text-ink-950">
+                {profile.name[0]}
+              </span>
+              <span className="max-w-24 truncate font-[family-name:var(--font-dossier)] text-xs text-brass-300">
+                {profile.name}
+              </span>
+            </span>
+          ) : (
+            <a
+              href="/api/oauth/authorize"
+              className="btn-brass px-2.5 py-1 font-[family-name:var(--font-dossier)] text-xs tracking-wider"
+            >
+              绑定知乎身份
+            </a>
+          )}
         </nav>
       </div>
     </header>

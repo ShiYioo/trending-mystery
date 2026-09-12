@@ -1,37 +1,36 @@
 // OAuth 回调：GET /api/oauth/callback?authorization_code=...
 // 协议以 authorization_code 为主路径、兼容 code（官方 Skill 2026-05-14 实测）。
-// 换取的 token 存进程内存会话，HttpOnly Cookie 只携带 sessionId。
+// real 模式调 openapi.zhihu.com/access_token；mock 模式走本地模拟换令牌——回调代码零差别。
+// 成功后 302 回首页（HttpOnly Cookie 只携带 sessionId），失败带错误参数回首页。
 
-import { createSession, exchangeToken, getOAuthConfig } from "@/lib/oauth";
+import {
+  createSession,
+  exchangeMockToken,
+  exchangeToken,
+  getOAuthConfig,
+  getOAuthMode,
+} from "@/lib/oauth";
 
 export async function GET(request: Request) {
-  const cfg = getOAuthConfig();
-  if (!cfg) {
-    return Response.json({ error: "oauth_not_configured" }, { status: 503 });
-  }
   const url = new URL(request.url);
   const code = url.searchParams.get("authorization_code") ?? url.searchParams.get("code");
+  const home = new URL("/", url.origin).toString();
   if (!code) {
-    return Response.json({ error: "missing_authorization_code" }, { status: 400 });
+    return Response.redirect(`${home}?oauth=fail&reason=missing_code`, 302);
   }
   try {
-    const token = await exchangeToken(cfg, code);
+    const mode = getOAuthMode();
+    const cfg = getOAuthConfig();
+    const token =
+      mode === "real" && cfg ? await exchangeToken(cfg, code) : exchangeMockToken(code);
     const { sessionId, maxAge } = createSession(token);
     const headers = new Headers({
-      "Content-Type": "application/json",
+      Location: `${home}?oauth=ok`,
       "Set-Cookie": `tm_oauth_session=${sessionId}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}`,
     });
-    return new Response(
-      JSON.stringify({
-        status: "ok",
-        tokenType: token.token_type,
-        expiresIn: token.expires_in,
-        warning: "知乎回调暂不返回 state 参数，本流程仅适合临时联调，不是生产级安全",
-      }),
-      { headers },
-    );
+    return new Response(null, { status: 302, headers });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    return Response.json({ error: "token_exchange_failed", hint: message }, { status: 502 });
+    const reason = encodeURIComponent(e instanceof Error ? e.message.slice(0, 120) : "exchange_failed");
+    return Response.redirect(`${home}?oauth=fail&reason=${reason}`, 302);
   }
 }

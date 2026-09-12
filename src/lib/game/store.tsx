@@ -49,6 +49,7 @@ interface GameState {
   collected: CollectedCard[];
   history: ChatMessage[];
   result: VerdictResponse | null;
+  profile: { name: string; headline: string } | null;
 }
 
 interface GameStore extends GameState {
@@ -59,7 +60,6 @@ interface GameStore extends GameState {
   setResult: (result: VerdictResponse) => void;
   resetAll: () => void;
 }
-
 const STORAGE_KEY = "tm_game_v1";
 const PLAYER_KEY = "tm_player_id";
 const MAX_COLLECTED = 24;
@@ -70,6 +70,7 @@ const emptyState: GameState = {
   collected: [],
   history: [],
   result: null,
+  profile: null,
 };
 
 const GameContext = createContext<GameStore | null>(null);
@@ -77,7 +78,7 @@ const GameContext = createContext<GameStore | null>(null);
 export function GameProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<GameState>(emptyState);
 
-  // 客户端挂载后恢复持久化状态（避免 SSR 水合不一致）
+  // 客户端挂载后恢复持久化状态（避免 SSR 水合不一致），并拉取登录身份
   useEffect(() => {
     const pid = localStorage.getItem(PLAYER_KEY) ?? crypto.randomUUID();
     localStorage.setItem(PLAYER_KEY, pid);
@@ -88,6 +89,12 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       restored = {};
     }
     setState({ ...emptyState, ...restored, playerId: pid });
+    fetch("/api/oauth/user")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { profile?: { name: string; headline: string } } | null) => {
+        if (data?.profile) setState((s) => ({ ...s, profile: data.profile! }));
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {

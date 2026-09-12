@@ -1,18 +1,29 @@
-// 发起知乎 OAuth 登录：GET /api/oauth/authorize → 302 跳转知乎授权页。
-// 凭证未配置时返回 503 与配置指引（app_id/app_key 需邮件向平台申请，见 README）。
+// 发起知乎 OAuth 登录：GET /api/oauth/authorize → 302 跳转授权页。
+// real 模式跳 openapi.zhihu.com；mock 模式跳本地模拟授权页（同协议形状）。
 
-import { authorizeUrl, getOAuthConfig } from "@/lib/oauth";
+import { authorizeUrl, getOAuthConfig, getOAuthMode } from "@/lib/oauth";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const mode = getOAuthMode();
   const cfg = getOAuthConfig();
-  if (!cfg) {
+  const fallbackCallback = new URL("/api/oauth/callback", new URL(request.url).origin).toString();
+
+  if (mode === "real" && cfg) {
+    return Response.redirect(authorizeUrl(cfg), 302);
+  }
+  if (mode === "real") {
     return Response.json(
       {
         error: "oauth_not_configured",
-        hint: "设置 ZHIHU_OAUTH_APP_ID / ZHIHU_OAUTH_APP_KEY / ZHIHU_OAUTH_REDIRECT_URI（回调须为已登记的公网 HTTPS 地址）",
+        hint: "ZHIHU_OAUTH_MODE=real 但缺少凭证——补全 ZHIHU_OAUTH_APP_ID / APP_KEY / REDIRECT_URI，或改用 mock 模式",
       },
       { status: 503 },
     );
   }
-  return Response.redirect(authorizeUrl(cfg), 302);
+  const params = new URLSearchParams({
+    redirect_uri: cfg?.redirectUri ?? fallbackCallback,
+    app_id: "mock",
+    response_type: "code",
+  });
+  return Response.redirect(`/api/mock-oauth/authorize?${params.toString()}`, 302);
 }
