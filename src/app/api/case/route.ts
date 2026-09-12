@@ -4,8 +4,10 @@
 // 公开视图剥离 clusterWeight 与 supportsStance——结案翻牌前玩家不可见（README §4.5）。
 
 import { normalizeKeyword } from "@/lib/clue/normalize";
-import { applyWeights, buildClueCards, toPublicBrief } from "@/lib/case/assembly";
+import { starRating } from "@/lib/clue/stars";
+import { applyWeights, buildClueCards, fallbackCluster, toPublicBrief } from "@/lib/case/assembly";
 import { buildClusterMessages, type ClusterResult } from "@/lib/case/prompts";
+import { llmEnabled } from "@/lib/env";
 import {
   cacheAside,
   caseKey,
@@ -73,22 +75,31 @@ export async function GET(request: Request) {
       );
     }
 
-    // 聚类：一次 thinking 调用产出简报+争议点+归属+检索词
-    const clusterRaw = (
-      await chat(
-        "zhida-thinking-1p5",
-        buildClusterMessages(
-          picked.Title,
-          items.map((it, i) => ({
-            idx: i,
-            title: it.Title,
-            excerpt: it.ContentText.slice(0, 200),
-            votes: it.VoteUpCount,
-          })),
-        ),
-      )
-    ).choices[0].message.content;
-    const cluster = extractJson<ClusterResult>(clusterRaw);
+    // 聚类：一次 thinking 调用产出简报+争议点+归属+检索词；直答不可用（或失败）时走降级聚类
+    let parsed: ClusterResult | null = null;
+    if (llmEnabled()) {
+      try {
+        const clusterRaw = (
+          await chat(
+            "zhida-thinking-1p5",
+            buildClusterMessages(
+              picked.Title,
+              items.map((it, i) => ({
+                idx: i,
+                title: it.Title,
+                excerpt: it.ContentText.slice(0, 200),
+                votes: it.VoteUpCount,
+              })),
+            ),
+          )
+        ).choices[0].message.content;
+        parsed = extractJson<ClusterResult>(clusterRaw);
+      } catch {
+        parsed = null;
+      }
+    }
+    const degraded = parsed === null;
+    const cluster = parsed ?? fallbackCluster(picked.Title, picked.Summary, items);
 
     const issues: Issue[] = cluster.issues.map((iss, i) => ({
       id: `issue_${i + 1}`,
@@ -106,6 +117,7 @@ export async function GET(request: Request) {
       issues,
       clueCards: buildClueCards(items, cluster.items),
       suggestedKeywords: cluster.keywords,
+      degraded,
     };
     await kvSetJson(caseKey(caseId), brief, CASE_TTL);
 

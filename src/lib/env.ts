@@ -20,3 +20,11 @@ export function getRedisUrl(): string {
   }
   return v;
 }
+
+/**
+ * 直答额度开关：ZHIHU_LLM_DISABLED=1 时全站跳过直答调用——
+ * 案件生成走降级聚类、审问室返回友好提示、结案走模板文案。额度恢复后删掉该变量即可。
+ */
+export function llmEnabled(): boolean {
+  return !process.env.ZHIHU_LLM_DISABLED;
+}

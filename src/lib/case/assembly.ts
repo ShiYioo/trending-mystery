@@ -60,5 +60,49 @@ export function toPublicBrief(brief: CaseBrief): PublicCaseBrief {
     })),
     clueCards: brief.clueCards.map((c) => ({ id: c.id, stars: c.stars, excerpt: c.excerpt })),
     suggestedKeywords: brief.suggestedKeywords,
+    degraded: brief.degraded,
+  };
+}
+
+/**
+ * 降级聚类（直答额度不可用时）：无 LLM，按赞数中位把回答分成"多数派/少数派"两营，
+ * 权重照常由真实赞数计算——玩法闭环完整，只是立场标签退化为通用命名。
+ */
+export function fallbackCluster(
+  questionTitle: string,
+  summary: string,
+  items: Array<{ Title: string; VoteUpCount: number }>, // 需已按赞数降序
+): ClusterResult {
+  const majority = Math.ceil(items.length / 2);
+  const top = items.slice(0, 3);
+  return {
+    briefing:
+      `【档案速览】${questionTitle}\n` +
+      (summary ? `${summary}\n` : "") +
+      "社区高赞观点速览：\n" +
+      top.map((i) => `· ${i.Title.slice(0, 40)}（${i.VoteUpCount} 赞）`).join("\n") +
+      "\n（注：分析引擎今日离线，本简报由档案科速记拼装，立场牌为通用分派。）",
+    issues: [
+      {
+        title: "社区的主流判断是哪一方？",
+        stances: [
+          { id: "s_main", label: "多数派判断" },
+          { id: "s_min", label: "少数派质疑" },
+        ],
+      },
+    ],
+    items: items.map((_, idx) => ({
+      idx,
+      issue: 0,
+      stance: idx < majority ? "s_main" : "s_min",
+    })),
+    keywords: [
+      questionTitle,
+      "辟谣",
+      "内幕",
+      "当事人回应",
+      "专业分析",
+      "时间线",
+    ].slice(0, 6),
   };
 }

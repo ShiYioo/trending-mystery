@@ -129,6 +129,8 @@ export interface CaseBrief {
   issues: Issue[];
   clueCards: ClueCard[];
   suggestedKeywords: string[];
+  /** true = 直答不可用，案件由降级聚类（按赞数分派）生成 */
+  degraded?: boolean;
 }
 
 export interface VerdictSubmission {
@@ -156,6 +158,7 @@ export interface PublicCaseBrief {
   issues: Array<{ id: string; title: string; stances: Array<{ id: string; label: string }> }>;
   clueCards: Array<{ id: string; stars: 1 | 2 | 3 | 4 | 5; excerpt: string }>;
   suggestedKeywords: string[];
+  degraded?: boolean;
 }
 
 export type Grade = "S" | "A" | "B" | "C";

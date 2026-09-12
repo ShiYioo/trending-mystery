@@ -3,6 +3,7 @@
 // → 直答 fast 档流式输出，SSE 原样转发增量块（前端打字机直接消费）。
 
 import { buildPersonaMessages } from "@/lib/case/prompts";
+import { llmEnabled } from "@/lib/env";
 import { caseKey, kvGetJson } from "@/lib/redis";
 import { chatStream } from "@/lib/zhihu";
 import type { CaseBrief, ChatMessage } from "@/lib/types";
@@ -31,6 +32,12 @@ export async function POST(request: Request) {
   const brief = await kvGetJson<CaseBrief>(caseKey(body.caseId));
   if (!brief) {
     return Response.json({ error: "case_not_found", hint: "先 GET /api/case 生成案件" }, { status: 404 });
+  }
+  if (!llmEnabled()) {
+    return Response.json(
+      { error: "llm_disabled", hint: "当事人今日不接待审问（分析引擎额度耗尽，明日恢复）" },
+      { status: 503 },
+    );
   }
 
   const messages = buildPersonaMessages(

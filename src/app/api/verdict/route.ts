@@ -2,6 +2,7 @@
 // 查表算分（scoreVerdict，零 AI）→ 陈词一致系数（封顶 15%）→ ZADD 榜单 → LLM 只写结案解说。
 
 import { buildCoherenceMessages, buildReportMessages } from "@/lib/case/prompts";
+import { llmEnabled } from "@/lib/env";
 import { caseKey, kvGetJson, recordScore } from "@/lib/redis";
 import { chat, extractJson } from "@/lib/zhihu";
 import { scoreVerdict } from "@/lib/verdict/scoring";
@@ -27,7 +28,7 @@ export async function POST(request: Request) {
 
   // ① 陈词一致系数：唯一用 LLM 的评分项，封顶 15%，失败按 0
   let coherence = 0;
-  if (body.statement && body.statement.trim()) {
+  if (llmEnabled() && body.statement && body.statement.trim()) {
     const chosenLabels = body.verdicts.flatMap((v) => {
       const issue = brief.issues.find((i) => i.id === v.issueId);
       const stance = issue?.stances.find((s) => s.id === v.stanceId);
@@ -67,23 +68,25 @@ export async function POST(request: Request) {
     return stance ? stance.label : `自定义结论：${v.customText ?? "（未表述）"}`;
   });
   let report = `结案完成。总分 ${score.total}，评级 ${score.grade}。你的结论：${chosenLabels.join("；")}。对比社区共识，见上方权重分布。`;
-  try {
-    report = (
-      await chat(
-        "zhida-thinking-1p5",
-        buildReportMessages({
-          questionTitle: brief.questionTitle,
-          briefing: brief.briefing,
-          grades: brief.issues.map((i) => i.title),
-          chosenLabels,
-          consensusLines: consensus.flatMap((c) => c.stances.map((s) => `${s.label} ${s.weight}%`)),
-          total: score.total,
-          grade: score.grade,
-        }),
-      )
-    ).choices[0].message.content.trim();
-  } catch {
-    // 保留模板报告
+  if (llmEnabled()) {
+    try {
+      report = (
+        await chat(
+          "zhida-thinking-1p5",
+          buildReportMessages({
+            questionTitle: brief.questionTitle,
+            briefing: brief.briefing,
+            grades: brief.issues.map((i) => i.title),
+            chosenLabels,
+            consensusLines: consensus.flatMap((c) => c.stances.map((s) => `${s.label} ${s.weight}%`)),
+            total: score.total,
+            grade: score.grade,
+          }),
+        )
+      ).choices[0].message.content.trim();
+    } catch {
+      // 保留模板报告
+    }
   }
 
   return Response.json({ caseId: body.caseId, playerId: body.playerId, score, consensus, report });
