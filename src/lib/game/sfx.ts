@@ -1,7 +1,7 @@
 // Web Audio 合成音效：零音频资源，全部程序生成。首次用户交互后解锁 AudioContext。
 // 打字嗒嗒 / 翻卡唰 / 印章咚 / 按钮咔 / 结案鼓——游戏感的声音层。
 
-type SfxName = "click" | "type" | "flip" | "stamp" | "drum" | "reveal";
+type SfxName = "click" | "type" | "flip" | "stamp" | "drum" | "reveal" | "boot";
 
 class Sfx {
   enabled = true;
@@ -102,6 +102,10 @@ class Sfx {
       case "reveal":
         this.tone(ctx, 520, 660, 0.09, "triangle", 0.07);
         this.tone(ctx, 660, 880, 0.12, "triangle", 0.07, 0.09);
+        break;
+      case "boot":
+        this.tone(ctx, 440, 440, 0.12, "square", 0.06);
+        this.tone(ctx, 880, 880, 0.18, "square", 0.06, 0.14);
         break;
     }
   }
