@@ -87,7 +87,9 @@ export function DustCanvas() {
 
 export function MuteButton() {
   const [on, setOn] = useState(true);
-  useEffect(() => setOn(sfx.enabled), []);
+  useEffect(() => {
+    queueMicrotask(() => setOn(sfx.enabled));
+  }, []);
   return (
     <button
       onClick={() => setOn(sfx.toggle())}
