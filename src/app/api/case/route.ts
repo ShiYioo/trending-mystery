@@ -3,11 +3,12 @@
 // → 代码用真实赞数算权重 → 装配 CaseBrief 落缓存 → 预热检索词 → 返回公开视图。
 // 公开视图剥离 clusterWeight 与 supportsStance——结案翻牌前玩家不可见（README §4.5）。
 
+import { cleanExcerpt, excerptFragment, groundedRatio, isGrounded, isRelatedTo } from "@/lib/clue/clean";
 import { normalizeKeyword } from "@/lib/clue/normalize";
 import { starRating } from "@/lib/clue/stars";
-import { cleanExcerpt, isRelatedTo } from "@/lib/clue/clean";
-import { applyWeights, buildClueCards, fallbackCluster, toPublicBrief } from "@/lib/case/assembly";
-import { buildClusterMessages, type ClusterResult } from "@/lib/case/prompts";
+import { applyWeights, buildClueCards, buildSafeBriefing, fallbackCluster, toPublicBrief } from "@/lib/case/assembly";
+import { buildClusterFixMessages, buildClusterMessages, type ClusterResult } from "@/lib/case/prompts";
+import type { CaseBrief, ChatMessage, Issue, SearchData } from "@/lib/types";
 import { llmEnabled } from "@/lib/env";
 import {
   cacheAside,
@@ -19,7 +20,6 @@ import {
   searchCacheKey,
 } from "@/lib/redis";
 import { chat, extractJson, getHotList, searchZhihu } from "@/lib/zhihu";
-import type { CaseBrief, Issue, SearchData } from "@/lib/types";
 
 const HOTLIST_DAILY_LIMIT = 100;
 const SEARCH_DAILY_LIMIT = 1000;
@@ -83,22 +83,48 @@ export async function GET(request: Request) {
     const clusterItems = related.length >= 3 ? related : items;
     let parsed: ClusterResult | null = null;
     if (llmEnabled()) {
+      const clusterInput = clusterItems.map((it, i) => ({
+        idx: i,
+        title: it.Title,
+        excerpt: cleanExcerpt(it.ContentText).slice(0, 200),
+        votes: it.VoteUpCount,
+      }));
+      const material =
+        picked.Title +
+        " " +
+        clusterItems.map((it) => cleanExcerpt(it.ContentText).slice(0, 120)).join(" ");
+      const ask = async (messages: ChatMessage[]) =>
+        extractJson<ClusterResult>((await chat("zhida-thinking-1p5", messages)).choices[0].message.content);
       try {
-        const clusterRaw = (
-          await chat(
-            "zhida-thinking-1p5",
-            buildClusterMessages(
-              picked.Title,
-              clusterItems.map((it, i) => ({
-                idx: i,
-                title: it.Title,
-                excerpt: cleanExcerpt(it.ContentText).slice(0, 200),
-                votes: it.VoteUpCount,
-              })),
-            ),
-          )
-        ).choices[0].message.content;
-        parsed = extractJson<ClusterResult>(clusterRaw);
+        let candidate = await ask(buildClusterMessages(picked.Title, clusterInput));
+        // 质检：虚构的争议点/简报 → 带审校意见返工一次（争议点仍由 LLM 出，只是打回重写）
+        const badTitles = candidate.issues
+          .filter((iss) => groundedRatio(iss.title, material) < 0.5)
+          .map((iss) => iss.title);
+        const briefingBad = !isGrounded(candidate.briefing, material);
+        if (badTitles.length > 0 || briefingBad) {
+          try {
+            candidate = await ask(
+              buildClusterFixMessages(picked.Title, clusterInput, candidate, badTitles, briefingBad),
+            );
+          } catch {
+            // 返工调用失败则保留草稿，走下方终检兜底
+          }
+        }
+        // 终检：返工后仍不合格的逐项兜底（简报换安全摘抄、争议点换通用题）
+        if (!isGrounded(candidate.briefing, material)) {
+          candidate.briefing = buildSafeBriefing(
+            picked.Title,
+            picked.Summary,
+            clusterItems.map((it) => ({ excerpt: it.ContentText, votes: it.VoteUpCount })),
+          );
+        }
+        candidate.issues = candidate.issues.map((iss) =>
+          groundedRatio(iss.title, material) >= 0.5
+            ? iss
+            : { ...iss, title: `关于「${excerptFragment(picked.Title, 24)}」，社区更倾向哪一方？` },
+        );
+        parsed = candidate;
       } catch {
         parsed = null;
       }
@@ -117,7 +143,11 @@ export async function GET(request: Request) {
       title: iss.title,
       stances: iss.stances.map((s) => ({ id: s.id, label: s.label, clusterWeight: 0 })),
     }));
-    applyWeights(issues, clusterItems.map((it) => ({ votes: it.VoteUpCount })), cluster.items);
+    applyWeights(
+      issues,
+      clusterItems.map((it) => ({ votes: it.VoteUpCount, authority: Number(it.AuthorityLevel) || 0 })),
+      cluster.items,
+    );
 
     const brief: CaseBrief = {
       caseId,

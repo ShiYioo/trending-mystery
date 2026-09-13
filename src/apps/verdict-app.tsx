@@ -138,12 +138,12 @@ export default function VerdictApp({ open }: AppProps) {
 
           <div className="mt-5">
             <p className="font-[family-name:var(--font-dossier)] text-xs tracking-widest text-paper-600">
-              指认证据（仅已归档证物生效）
+              指认证据（仅核心证物生效）
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               {pool.length === 0 && (
                 <button onClick={() => open("search")} className="text-xs text-brass-400 underline-offset-4 hover:underline">
-                  档案袋里没有已归档证物——去档案检索找"已归档"标记的卡 →
+                  档案袋里没有核心证物——去档案检索找"核心证据"标记的卡 →
                 </button>
               )}
               {pool.map((c) => {

@@ -144,15 +144,15 @@ export default function SearchApp({ open, seed }: AppProps & { seed?: { keyword:
                     <span className="font-[family-name:var(--font-dossier)] text-[10px] uppercase tracking-widest text-paper-600">
                       {card.contentType === "Article" ? "剪报" : "证词"}
                     </span>
-                    {card.cardId ? (
-                      <span className="ml-auto border border-brass-400/60 px-1.5 py-0.5 font-[family-name:var(--font-dossier)] text-[10px] tracking-widest text-brass-300">
-                        已归档 · 结案可指认
-                      </span>
-                    ) : (
-                      <span className="ml-auto font-[family-name:var(--font-dossier)] text-[10px] tracking-widest text-paper-600">
-                        外围情报
-                      </span>
-                    )}
+                {card.cardId ? (
+                  <span className="ml-auto border border-brass-400/60 px-1.5 py-0.5 font-[family-name:var(--font-dossier)] text-[10px] tracking-widest text-brass-300">
+                    核心证据 · 结案可指认
+                  </span>
+                ) : (
+                  <span className="ml-auto font-[family-name:var(--font-dossier)] text-[10px] tracking-widest text-paper-600">
+                    外围线索
+                  </span>
+                )}
                   </div>
                   <h3 className="mt-2 text-base leading-snug text-paper-100">{card.title}</h3>
                   <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-paper-400">{card.excerpt}</p>
@@ -231,7 +231,7 @@ export default function SearchApp({ open, seed }: AppProps & { seed?: { keyword:
             ))}
           </ul>
           <p className="mt-3 text-xs leading-relaxed text-paper-600">
-            提示：高赞 × 高星 = 主流立场的指纹。
+            提示：高赞 × 高星 = 主流立场的指纹。只有「核心证据」（来自本案高赞回答池）能在结案时指认；「外围线索」仅供审问参考。
           </p>
         </section>
 
@@ -240,7 +240,7 @@ export default function SearchApp({ open, seed }: AppProps & { seed?: { keyword:
             档案袋（{collected.length}）
           </h2>
           <p className="mt-1 font-[family-name:var(--font-dossier)] text-[10px] tracking-widest text-paper-600">
-            已归档 {archivedCount} 张 · 外围 {collected.length - archivedCount} 张
+            核心证据 {archivedCount} 张 · 外围线索 {collected.length - archivedCount} 张
           </p>
           <ul className="mt-3 max-h-56 space-y-2 overflow-y-auto pr-1">
             {collected.map((c) => (

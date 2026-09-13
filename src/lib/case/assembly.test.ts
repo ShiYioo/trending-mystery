@@ -20,8 +20,8 @@ const mkItem = (over: Partial<SearchItem>): SearchItem => ({
   ...over,
 });
 
-describe("applyWeights 权重来自真实赞数", () => {
-  it("按赞数份额计算 clusterWeight，与模型输出无关", () => {
+describe("applyWeights 权威加权的共识权重", () => {
+  it("按 log 赞数份额计算 clusterWeight，与模型输出无关", () => {
     const issues = [
       {
         id: "i1",
@@ -34,22 +34,53 @@ describe("applyWeights 权重来自真实赞数", () => {
     ];
     applyWeights(
       issues,
-      [{ votes: 600 }, { votes: 300 }, { votes: 100 }],
+      [
+        { votes: 600, authority: 0 },
+        { votes: 300, authority: 0 },
+        { votes: 100, authority: 0 },
+      ],
       [
         { idx: 0, issue: 0, stance: "s1" },
         { idx: 1, issue: 0, stance: "s1" },
         { idx: 2, issue: 0, stance: "s2" },
       ],
     );
-    expect(issues[0].stances[0].clusterWeight).toBeCloseTo(0.9);
-    expect(issues[0].stances[1].clusterWeight).toBeCloseTo(0.1);
+    const s1w = Math.log10(601) + Math.log10(301);
+    const s2w = Math.log10(101);
+    expect(issues[0].stances[0].clusterWeight).toBeCloseTo(s1w / (s1w + s2w), 5);
+    expect(issues[0].stances[1].clusterWeight).toBeCloseTo(s2w / (s1w + s2w), 5);
+  });
+
+  it("少而权威压过多而匿名——数赞数不再足以定位主流", () => {
+    const issues = [
+      {
+        id: "i1",
+        title: "q",
+        stances: [
+          { id: "s1", label: "权威派", clusterWeight: 0 },
+          { id: "s2", label: "流量派", clusterWeight: 0 },
+        ],
+      },
+    ];
+    applyWeights(
+      issues,
+      [
+        { votes: 300, authority: 4 }, // 一位权威答主，300 赞
+        { votes: 2000, authority: 0 }, // 匿名热帖，2000 赞
+      ],
+      [
+        { idx: 0, issue: 0, stance: "s1" },
+        { idx: 1, issue: 0, stance: "s2" },
+      ],
+    );
+    expect(issues[0].stances[0].clusterWeight).toBeGreaterThan(0.5); // 权威派反超
   });
 
   it("未映射到任何回答的立场权重为 0，不产生 NaN", () => {
     const issues = [
       { id: "i1", title: "q", stances: [{ id: "s1", label: "A", clusterWeight: 0 }] },
     ];
-    applyWeights(issues, [{ votes: 100 }], []);
+    applyWeights(issues, [{ votes: 100, authority: 2 }], []);
     expect(issues[0].stances[0].clusterWeight).toBe(0);
   });
 });

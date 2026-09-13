@@ -267,7 +267,7 @@ sequenceDiagram
 }
 ```
 
-**clusterWeight 由代码用真实点赞数计算，LLM 只做立场归类**——权重来自真实数据，不来自模型判断。玩家下注前基准已锁死，裁判不看选手脸色。直答接口仅保证 `model / messages / stream` 三个请求字段，`response_format` 不保证生效——立场聚类的 JSON 输出统一走**提示词约束 + 容错解析**（fenced JSON 提取 + 校验重试），不依赖 JSON mode。
+**clusterWeight 由代码按权威加权赞数计算**——`log10(1+赞同数) × (1 + 0.35×权威等级)` 求和归一：少而权威的立场可压过多而匿名的立场，光读赞数不足以定位主流，必须同时甄别认证等级（"五星大佬 vs 一星小号信谁"由此承重），LLM 只做立场归类——权重来自真实数据，不来自模型判断。玩家下注前基准已锁死，裁判不看选手脸色。直答接口仅保证 `model / messages / stream` 三个请求字段，`response_format` 不保证生效——立场聚类的 JSON 输出统一走**提示词约束 + 容错解析**（fenced JSON 提取 + 校验重试），不依赖 JSON mode。
 
 **② 玩家提交** = 押立场 + 指认证据（+ 可选陈词）：`{ issueId, stanceId, citedClueIds[] }`。
 
