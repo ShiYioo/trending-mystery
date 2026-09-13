@@ -1,17 +1,16 @@
 // 取证 / 线索卡引擎（案件感知版）：
-// 归一化 → 缓存 → 配额 → 真实搜索 → 服务端装配视图模型：
+// 归一化 → 缓存 → 真实搜索 → 服务端装配视图模型：
 //   星级（真实三字段）、归档匹配（命中案件底表的卡带 cardId，结案时才可指认）、线人低语（精选评论）。
+// 不做自管配额：知乎侧限频（30001）透传为 zhihu_rate_limited，看到就换 ZHIHU_ACCESS_SECRET。
 
 import { cleanExcerpt } from "@/lib/clue/clean";
 import { normalizeKeyword } from "@/lib/clue/normalize";
 import { starRating } from "@/lib/clue/stars";
-import { caseKey, cacheAside, consumeQuota, kvGetJson, searchCacheKey } from "@/lib/redis";
-import { searchZhihu } from "@/lib/zhihu";
-import type { CaseBrief, SearchData } from "@/lib/types";
+import { caseKey, cacheAside, kvGetJson, searchCacheKey } from "@/lib/redis";
+import { searchZhihu, ZhihuApiError } from "@/lib/zhihu";
+import type { CaseBrief } from "@/lib/types";
 
-const SEARCH_DAILY_LIMIT = 1000;
 const SEARCH_CACHE_TTL_SECONDS = 6 * 3600;
-const QUOTA_EXHAUSTED = "QUOTA_EXHAUSTED";
 const WHISPERS_PER_CARD = 3;
 
 export async function GET(request: Request) {
@@ -25,11 +24,9 @@ export async function GET(request: Request) {
     const brief = caseId ? await kvGetJson<CaseBrief>(caseKey(caseId)) : null;
     const pool = new Map((brief?.clueCards ?? []).map((c) => [c.sourceContentId, c.id]));
 
-    const data = await cacheAside(searchCacheKey(caseId || "global", keyword), SEARCH_CACHE_TTL_SECONDS, async () => {
-      const quota = await consumeQuota("search", SEARCH_DAILY_LIMIT);
-      if (!quota.allowed) return { HasMore: false, SearchHashId: "quota", Items: [] } as SearchData;
-      return searchZhihu(keyword, 10);
-    });
+    const data = await cacheAside(searchCacheKey(caseId || "global", keyword), SEARCH_CACHE_TTL_SECONDS, async () =>
+      searchZhihu(keyword, 10),
+    );
 
     const items = data.Items.map((it) => ({
       contentId: it.ContentID,
@@ -54,13 +51,16 @@ export async function GET(request: Request) {
 
     return Response.json({ keyword, caseId, count: items.length, items });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    if (message === QUOTA_EXHAUSTED) {
+    if (e instanceof ZhihuApiError && e.rateLimited) {
       return Response.json(
-        { error: "quota_exhausted", hint: "档案库检索受限，请换用已有线索中的关键词" },
+        {
+          error: "zhihu_rate_limited",
+          hint: `知乎接口限频（30001）：${e.message}——更换 ZHIHU_ACCESS_SECRET 后重启服务`,
+        },
         { status: 429 },
       );
     }
+    const message = e instanceof Error ? e.message : String(e);
     if (message.includes("ZHIHU_ACCESS_SECRET") || message.includes("REDIS_URL")) {
       return Response.json({ error: "env_missing", hint: message }, { status: 503 });
     }

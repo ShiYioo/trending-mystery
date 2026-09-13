@@ -1,7 +1,8 @@
-// Redis 数据层（唯一数据层）：配额计数 / 结果缓存 / 案件底表 / 每日榜单。
+// Redis 数据层（唯一数据层）：结果缓存 / 案件底表 / 每日榜单。
 // 纪律：键名生成只收敛在本文件，业务代码禁止手拼键（README §4.6）。
-// 开发机与线上共用同一 REDIS_URL——同一本配额账，谁烧都记在这里。
-// REDIS_URL 未配置时降级为进程内存储（仅限本地开发：配额账不跨进程、重启即清），并告警一次。
+// 开发机与线上共用同一 REDIS_URL——同一份缓存与榜单。
+// 不做自管配额计数：知乎侧限频（30001）直接透传为 zhihu_rate_limited 报错，便于及时更换密钥。
+// REDIS_URL 未配置时降级为进程内存储（仅限本地开发：缓存重启即清），并告警一次。
 
 import Redis from "ioredis";
 import { getRedisUrl } from "./env";
@@ -13,8 +14,6 @@ const localDate = (d = new Date()) =>
   `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const localHour = (d = new Date()) => `${localDate(d)}T${pad(d.getHours())}`;
 
-export const quotaKey = (kind: "search" | "hotlist", day = localDate()) =>
-  `quota:${kind}:${day}`;
 export const hotlistCacheKey = (hour = localHour()) => `cache:hotlist:${hour}`;
 export const searchCacheKey = (caseId: string, normalizedKeyword: string) =>
   `cache:search:${caseId}:${normalizedKeyword}`;
@@ -60,25 +59,6 @@ async function kvSet(key: string, value: string, ttlSeconds: number): Promise<vo
   await getRedis().set(key, value, "EX", ttlSeconds);
 }
 
-async function kvIncr(key: string): Promise<number> {
-  if (!usingRedis()) {
-    fallbackWarn();
-    const next = Number(memory.get(key)?.v ?? 0) + 1;
-    memory.set(key, { v: String(next) });
-    return next;
-  }
-  return getRedis().incr(key);
-}
-
-async function kvExpire(key: string, ttlSeconds: number): Promise<void> {
-  if (!usingRedis()) {
-    const hit = memory.get(key);
-    if (hit && !hit.exp) memory.set(key, { ...hit, exp: Date.now() + ttlSeconds * 1000 });
-    return;
-  }
-  await getRedis().expire(key, ttlSeconds);
-}
-
 let client: Redis | null = null;
 
 /** 仅在配置了 REDIS_URL 时可调用；进程内降级路径不会触达这里 */
@@ -105,25 +85,7 @@ export async function kvSetJson(key: string, value: unknown, ttlSeconds: number)
   await kvSet(key, JSON.stringify(value), ttlSeconds);
 }
 
-// ===== 配额计数器：INCR + 首次 EXPIRE 48h，按日自动翻篇 =====
-
-export interface QuotaUsage {
-  allowed: boolean;
-  used: number;
-  limit: number;
-}
-
-export async function consumeQuota(
-  kind: "search" | "hotlist",
-  limit: number,
-): Promise<QuotaUsage> {
-  const key = quotaKey(kind);
-  const used = await kvIncr(key);
-  if (used === 1) await kvExpire(key, 48 * 3600);
-  return { allowed: used <= limit, used, limit };
-}
-
-// ===== cache-aside：命中直出，未命中加载后回写（配额按关键词计费的落点） =====
+// ===== cache-aside：命中直出，未命中加载后回写（加载失败不落缓存，真实错误向上透传） =====
 
 export async function cacheAside<T>(
   key: string,

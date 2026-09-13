@@ -2,6 +2,7 @@
 // 热榜(小时级整表缓存) → 选问题 → 标题检索取证 → 直答聚类(简报/争议点/立场/检索词)
 // → 代码用真实赞数算权重 → 装配 CaseBrief 落缓存 → 预热检索词 → 返回公开视图。
 // 公开视图剥离 clusterWeight 与 supportsStance——结案翻牌前玩家不可见（README §4.5）。
+// 不做自管配额：知乎侧限频（30001）透传为 zhihu_rate_limited，看到就换 ZHIHU_ACCESS_SECRET。
 
 import { cleanExcerpt, excerptFragment, groundedRatio, isGrounded, isRelatedTo } from "@/lib/clue/clean";
 import { normalizeKeyword } from "@/lib/clue/normalize";
@@ -20,43 +21,33 @@ import { llmEnabled } from "@/lib/env";
 import {
   cacheAside,
   caseKey,
-  consumeQuota,
   hotlistCacheKey,
   kvGetJson,
   kvSetJson,
   searchCacheKey,
 } from "@/lib/redis";
-import { chat, extractJson, getHotList, searchZhihu } from "@/lib/zhihu";
+import { chat, extractJson, getHotList, searchZhihu, ZhihuApiError } from "@/lib/zhihu";
 
-const HOTLIST_DAILY_LIMIT = 100;
-const SEARCH_DAILY_LIMIT = 1000;
 const HOTLIST_TTL = 3600;
 const SEARCH_TTL = 6 * 3600;
 const CASE_TTL = 24 * 3600;
 /** 送入聚类的回答上限（摘要级语料，thinking 档上下文可控） */
 const CLUSTER_MAX_ITEMS = 12;
-/** 预热检索词数量（配额预算 ~10 次/案） */
+/** 预热检索词数量（玩家搜这些词时命中缓存，零外呼） */
 const PREHEAT_KEYWORDS = 6;
-const QUOTA_EXHAUSTED = "QUOTA_EXHAUSTED";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
-async function searchWithQuota(caseId: string, keyword: string): Promise<SearchData> {
-  return cacheAside(searchCacheKey(caseId, normalizeKeyword(keyword)), SEARCH_TTL, async () => {
-    const quota = await consumeQuota("search", SEARCH_DAILY_LIMIT);
-    if (!quota.allowed) return { HasMore: false, SearchHashId: "quota-exhausted", Items: [] };
-    return searchZhihu(keyword, 10);
-  });
+async function searchWithCache(caseId: string, keyword: string): Promise<SearchData> {
+  return cacheAside(searchCacheKey(caseId, normalizeKeyword(keyword)), SEARCH_TTL, async () =>
+    searchZhihu(keyword, 10),
+  );
 }
 
 export async function GET(request: Request) {
   const rank = Math.max(1, Number(new URL(request.url).searchParams.get("rank") ?? 1) || 1);
   try {
-    const hot = await cacheAside(hotlistCacheKey(), HOTLIST_TTL, async () => {
-      const quota = await consumeQuota("hotlist", HOTLIST_DAILY_LIMIT);
-      if (!quota.allowed) throw new Error(QUOTA_EXHAUSTED);
-      return getHotList(30);
-    });
+    const hot = await cacheAside(hotlistCacheKey(), HOTLIST_TTL, async () => getHotList(30));
     const questions = hot.Items.filter((i) => i.Url.includes("/question/"));
     const picked = questions[Math.min(rank - 1, questions.length - 1)];
     if (!picked) {
@@ -71,7 +62,7 @@ export async function GET(request: Request) {
     if (cached) return Response.json(toPublicBrief(cached));
 
     // 取证：以问题标题为首个检索词
-    const searchData = await searchWithQuota(caseId, picked.Title);
+    const searchData = await searchWithCache(caseId, picked.Title);
     const items = [...searchData.Items]
       .sort((a, b) => b.VoteUpCount - a.VoteUpCount)
       .slice(0, CLUSTER_MAX_ITEMS);
@@ -181,15 +172,21 @@ export async function GET(request: Request) {
     void Promise.allSettled(
       cluster.keywords
         .slice(0, PREHEAT_KEYWORDS)
-        .map((kw) => searchWithQuota(caseId, kw)),
+        .map((kw) => searchWithCache(caseId, kw)),
     );
 
     return Response.json(toPublicBrief(brief));
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    if (message === QUOTA_EXHAUSTED) {
-      return Response.json({ error: "quota_exhausted" }, { status: 429 });
+    if (e instanceof ZhihuApiError && e.rateLimited) {
+      return Response.json(
+        {
+          error: "zhihu_rate_limited",
+          hint: `知乎接口限频（30001）：${e.message}——更换 ZHIHU_ACCESS_SECRET 后重启服务`,
+        },
+        { status: 429 },
+      );
     }
+    const message = e instanceof Error ? e.message : String(e);
     if (message.includes("ZHIHU_ACCESS_SECRET") || message.includes("REDIS_URL")) {
       return Response.json({ error: "env_missing", hint: message }, { status: 503 });
     }
