@@ -1,9 +1,47 @@
-// 知乎摘要文本清洗：摘掉媒体占位符、折叠空白——线索卡/简报/聚类输入统一过这一层。
+// 知乎摘要文本清洗：解码 HTML 实体、知乎表情短码映射 emoji、摘掉媒体占位符、折叠空白
+// ——线索卡/简报/聚类输入统一过这一层。
+// 白名单纪律（2026-09-13 缓存语料普查）：方括号短码只映射已知表情、媒体占位符只摘已知名单；
+// 普查实见 [pʰ][tɕ] 等国际音标与 [1][2] 脚注——绝不能按"短方括号一律清除"处理。
 
 const MEDIA_PLACEHOLDER = /\[(图片|视频|链接|音频|文章|想法|海报|直播)\]/g;
 
+/** 知乎表情短码 → emoji 近似（真·表情图片无法还原：接口只给纯文本，无表情图 URL） */
+const ZHIHU_EMOTES: Record<string, string> = {
+  赞: "👍", 赞同: "👍", 感谢: "🙏", 拜托: "🙏", 鼓掌: "👏",
+  捂脸: "🤦", 捂嘴: "🤭", 大笑: "😄", 笑哭: "😂", 飙泪笑: "😂",
+  大哭: "😭", 泪: "😢", 爱: "❤️", 爱心: "❤️", 害羞: "😳",
+  思考: "🤔", 好奇: "🤔", 发呆: "😶", 惊讶: "😮", 哇: "😲",
+  生气: "😠", 白眼: "🙄", 微笑: "🙂", 再见: "👋", 吃瓜: "🍉",
+  doge: "🐶", 狗头: "🐶", 手动狗头: "🐶", 看看你: "👀",
+};
+const EMOTE_RE = new RegExp(`\\[(${Object.keys(ZHIHU_EMOTES).join("|")})\\]`, "g");
+
+/** 常用命名实体表 + 数字实体通用解码；二次转义（&amp;gt;）递归再解一层 */
+const HTML_ENTITIES: Record<string, string> = {
+  amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ",
+  hellip: "…", mdash: "—", ndash: "–", lsquo: "‘", rsquo: "’", ldquo: "“", rdquo: "”",
+  middot: "·", bull: "•", copy: "©", reg: "®", trade: "™", deg: "°", times: "×", divide: "÷",
+};
+
+function decodeEntities(s: string): string {
+  const once = s.replace(
+    /&([a-zA-Z][a-zA-Z0-9]{1,10});|&#(\d{1,6});|&#[xX]([0-9a-fA-F]{1,6});/g,
+    (m, name: string, dec: string, hex: string) => {
+      if (name && HTML_ENTITIES[name] !== undefined) return HTML_ENTITIES[name];
+      if (dec) return String.fromCodePoint(Number(dec));
+      if (hex) return String.fromCodePoint(parseInt(hex, 16));
+      return m;
+    },
+  );
+  return once === s ? once : decodeEntities(once);
+}
+
 export function cleanExcerpt(raw: string): string {
-  return raw.replace(MEDIA_PLACEHOLDER, " ").replace(/\s+/g, " ").trim();
+  return decodeEntities(raw)
+    .replace(EMOTE_RE, (m, name: string) => ZHIHU_EMOTES[name] ?? m)
+    .replace(MEDIA_PLACEHOLDER, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /** 清洗后截取片段（尽量在句读处收尾） */

@@ -45,8 +45,9 @@ export async function GET(request: Request) {
       /** 命中案件底表 → 已归档（结案可指认）；null = 外围情报 */
       cardId: pool.get(it.ContentID) ?? null,
       whispers: (it.CommentInfoList ?? [])
-        .slice(0, WHISPERS_PER_CARD)
-        .map((c) => cleanExcerpt(c.Content)),
+        .map((c) => cleanExcerpt(c.Content))
+        .filter((s) => s.length > 0) // 整条只是表情/占位符的评论清洗后为空，先过滤再取数
+        .slice(0, WHISPERS_PER_CARD),
     }));
 
     return Response.json({ keyword, caseId, count: items.length, items });
