@@ -21,7 +21,7 @@ export default function BoardApp() {
   }, [caseBrief]);
 
   useEffect(() => {
-    void refresh();
+    queueMicrotask(() => void refresh());
     const timer = setInterval(refresh, 30000); // 30 秒自动刷新
     return () => clearInterval(timer);
   }, [refresh]);
