@@ -33,6 +33,19 @@ describe("applyWeights 权威加权的共识权重", () => {
     expect(issues[0].stances[0].clusterWeight).toBeGreaterThan(issues[0].stances[1].clusterWeight);
   });
 
+  it("兼容模型误返回的 1-based issue，不丢失争议点权重", () => {
+    const issues = [
+      { id: "i1", title: "q1", stances: [{ id: "s1", label: "A", clusterWeight: 0 }] },
+      { id: "i2", title: "q2", stances: [{ id: "s2", label: "B", clusterWeight: 0 }] },
+    ];
+    applyWeights(issues, [{ votes: 100 }, { votes: 10 }], [
+      { idx: 0, issue: 1, stance: "s1" },
+      { idx: 1, issue: 2, stance: "s2" },
+    ]);
+    expect(issues[0].stances[0].clusterWeight).toBe(1);
+    expect(issues[1].stances[0].clusterWeight).toBe(1);
+  });
+
   it("按 log 赞数份额计算 clusterWeight，与模型输出无关", () => {
     const issues = [
       {

@@ -21,7 +21,7 @@ export function applyWeights(
     for (const stance of issue.stances) stance.clusterWeight = 0;
   }
   const issueByIdx = new Map(issues.map((i) => [issues.indexOf(i), i]));
-  const normalized = normalizeMapping(mapping, items.length);
+  const normalized = normalizeMapping(mapping, items.length, issues.length);
   for (const m of normalized) {
     const item = items[m.idx];
     const issue = issueByIdx.get(m.issue);
@@ -35,12 +35,30 @@ export function applyWeights(
 }
 
 /** 兼容早期/错误模型输出的 1-based idx；内部统一使用 0-based。 */
-function normalizeMapping(mapping: ClusterResult["items"], itemCount: number): ClusterResult["items"] {
+function normalizeMapping(
+  mapping: ClusterResult["items"],
+  itemCount: number,
+  issueCount = Number.POSITIVE_INFINITY,
+): ClusterResult["items"] {
   const valid = mapping.filter((m) => Number.isInteger(m.idx));
   const isOneBased = valid.some((m) => m.idx === itemCount) && !valid.some((m) => m.idx === 0);
+  const hasIssueIndexes = Number.isFinite(issueCount);
+  const isIssueOneBased =
+    hasIssueIndexes &&
+    valid.some((m) => m.issue === issueCount) &&
+    !valid.some((m) => m.issue === 0);
   return valid
-    .map((m) => ({ ...m, idx: isOneBased ? m.idx - 1 : m.idx }))
-    .filter((m) => m.idx >= 0 && m.idx < itemCount);
+    .map((m) => ({
+      ...m,
+      idx: isOneBased ? m.idx - 1 : m.idx,
+      issue: isIssueOneBased ? m.issue - 1 : m.issue,
+    }))
+    .filter(
+      (m) =>
+        m.idx >= 0 &&
+        m.idx < itemCount &&
+        (!hasIssueIndexes || (m.issue >= 0 && m.issue < issueCount)),
+    );
 }
 
 /** 线索卡：星级来自真实三字段，立场归属来自 LLM 映射 */
