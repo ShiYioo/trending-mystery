@@ -6,7 +6,8 @@ import { authorizeUrl, getOAuthConfig, getOAuthMode } from "@/lib/oauth";
 export async function GET(request: Request) {
   const mode = getOAuthMode();
   const cfg = getOAuthConfig();
-  const fallbackCallback = new URL("/api/oauth/callback", new URL(request.url).origin).toString();
+  const origin = new URL(request.url).origin;
+  const fallbackCallback = new URL("/api/oauth/callback", origin).toString();
 
   if (mode === "real" && cfg) {
     return Response.redirect(authorizeUrl(cfg), 302);
@@ -25,5 +26,6 @@ export async function GET(request: Request) {
     app_id: "mock",
     response_type: "code",
   });
-  return Response.redirect(`/api/mock-oauth/authorize?${params.toString()}`, 302);
+  // Response.redirect 只接受绝对 URL，相对路径会抛 TypeError → 500（EdgeOne 线上实测踩过）
+  return Response.redirect(`${origin}/api/mock-oauth/authorize?${params.toString()}`, 302);
 }
