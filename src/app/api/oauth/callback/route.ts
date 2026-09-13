@@ -8,6 +8,7 @@ import {
   createSession,
   exchangeMockToken,
   exchangeToken,
+  consumeOAuthState,
   getOAuthConfig,
   getOAuthMode,
 } from "@/lib/oauth";
@@ -15,8 +16,15 @@ import {
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = url.searchParams.get("authorization_code") ?? url.searchParams.get("code");
+  const state = url.searchParams.get("state");
   if (!code) {
     return new Response(resultPage(false, "回调缺少授权码（authorization_code）"), {
+      status: 400,
+      headers: { "Content-Type": "text/html; charset=utf-8" },
+    });
+  }
+  if (state && !consumeOAuthState(state)) {
+    return new Response(resultPage(false, "授权状态无效或已过期，请重新发起登录"), {
       status: 400,
       headers: { "Content-Type": "text/html; charset=utf-8" },
     });

@@ -21,6 +21,8 @@ export interface OAuthProfile {
 
 const AUTHORIZE_URL = "https://openapi.zhihu.com/authorize";
 const TOKEN_URL = "https://openapi.zhihu.com/access_token";
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+const oauthStates = new Map<string, { exp: number }>();
 
 export function getOAuthConfig(): OAuthConfig | null {
   const appId = process.env.ZHIHU_OAUTH_APP_ID;
@@ -40,11 +42,25 @@ export function getOAuthMode(): OAuthMode {
   return getOAuthConfig() ? "real" : "mock";
 }
 
-export function authorizeUrl(cfg: OAuthConfig): string {
+export function createOAuthState(): string {
+  const state = `tm_state_${uuid()}`;
+  oauthStates.set(state, { exp: Date.now() + OAUTH_STATE_TTL_MS });
+  return state;
+}
+
+export function consumeOAuthState(state: string | null | undefined): boolean {
+  if (!state) return false;
+  const entry = oauthStates.get(state);
+  oauthStates.delete(state);
+  return !!entry && entry.exp >= Date.now();
+}
+
+export function authorizeUrl(cfg: OAuthConfig, state: string): string {
   const params = new URLSearchParams({
     redirect_uri: cfg.redirectUri,
     app_id: cfg.appId,
     response_type: "code",
+    state,
   });
   return `${AUTHORIZE_URL}?${params.toString()}`;
 }

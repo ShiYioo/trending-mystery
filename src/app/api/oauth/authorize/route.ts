@@ -1,16 +1,17 @@
 // 发起知乎 OAuth 登录：GET /api/oauth/authorize → 302 跳转授权页。
 // real 模式跳 openapi.zhihu.com；mock 模式跳本地模拟授权页（同协议形状）。
 
-import { authorizeUrl, getOAuthConfig, getOAuthMode } from "@/lib/oauth";
+import { authorizeUrl, createOAuthState, getOAuthConfig, getOAuthMode } from "@/lib/oauth";
 
 export async function GET(request: Request) {
   const mode = getOAuthMode();
   const cfg = getOAuthConfig();
+  const state = createOAuthState();
   const origin = new URL(request.url).origin;
   const fallbackCallback = new URL("/api/oauth/callback", origin).toString();
 
   if (mode === "real" && cfg) {
-    return Response.redirect(authorizeUrl(cfg), 302);
+    return Response.redirect(authorizeUrl(cfg, state), 302);
   }
   if (mode === "real") {
     return Response.json(
@@ -25,6 +26,7 @@ export async function GET(request: Request) {
     redirect_uri: cfg?.redirectUri ?? fallbackCallback,
     app_id: "mock",
     response_type: "code",
+    state,
   });
   // Response.redirect 只接受绝对 URL，相对路径会抛 TypeError → 500（EdgeOne 线上实测踩过）
   return Response.redirect(`${origin}/api/mock-oauth/authorize?${params.toString()}`, 302);

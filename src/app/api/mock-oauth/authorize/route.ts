@@ -4,7 +4,7 @@
 
 import { issueMockCode, MOCK_USERS } from "@/lib/oauth";
 
-function authorizePage(redirectUri: string): string {
+function authorizePage(redirectUri: string, state: string): string {
   const users = MOCK_USERS.map(
     (u, i) => `
     <label class="user${i === 0 ? " checked" : ""}">
@@ -54,6 +54,7 @@ function authorizePage(redirectUri: string): string {
     <p class="scope">授权后，应用将获得你的公开昵称与简介，用于结案报告与今日神探榜留名。</p>
     <form method="post" action="/api/mock-oauth/authorize">
       <input type="hidden" name="redirect_uri" value="${redirectUri.replace(/"/g, "&quot;")}" />
+      <input type="hidden" name="state" value="${state.replace(/"/g, "&quot;")}" />
       ${users}
       <button type="submit">同意并授权</button>
     </form>
@@ -67,7 +68,8 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const redirectUri =
     url.searchParams.get("redirect_uri") ?? new URL("/api/oauth/callback", url.origin).toString();
-  return new Response(authorizePage(redirectUri), {
+  const state = url.searchParams.get("state") ?? "";
+  return new Response(authorizePage(redirectUri, state), {
     headers: { "Content-Type": "text/html; charset=utf-8" },
   });
 }
@@ -75,12 +77,14 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const form = await request.formData();
   const redirectUri = String(form.get("redirect_uri") ?? "");
+  const state = String(form.get("state") ?? "");
   const userKey = String(form.get("user") ?? "");
   const user = MOCK_USERS.find((u) => u.key === userKey);
   if (!redirectUri || !user) {
     return new Response("missing redirect_uri or unknown user", { status: 400 });
   }
+  if (!state) return new Response("missing state", { status: 400 });
   const code = issueMockCode(user.key);
   const sep = redirectUri.includes("?") ? "&" : "?";
-  return Response.redirect(`${redirectUri}${sep}authorization_code=${code}`, 302);
+  return Response.redirect(`${redirectUri}${sep}authorization_code=${code}&state=${encodeURIComponent(state)}`, 302);
 }
