@@ -37,6 +37,29 @@ export async function POST(request: Request) {
     return Response.json({ error: "case_not_found", hint: "先 GET /api/case 生成案件" }, { status: 404 });
   }
 
+  const issueIds = new Set(brief.issues.map((issue) => issue.id));
+  const clueIds = new Set(brief.clueCards.map((card) => card.id));
+  const seenIssues = new Set<string>();
+  for (const verdict of body.verdicts) {
+    if (!verdict || typeof verdict.issueId !== "string" || !issueIds.has(verdict.issueId)) {
+      return Response.json({ error: "invalid_issue", hint: "结案包含不存在的争议点" }, { status: 400 });
+    }
+    if (seenIssues.has(verdict.issueId)) {
+      return Response.json({ error: "duplicate_issue", hint: "每个争议点只能提交一次" }, { status: 400 });
+    }
+    seenIssues.add(verdict.issueId);
+    const issue = brief.issues.find((item) => item.id === verdict.issueId)!;
+    if (verdict.stanceId && !issue.stances.some((stance) => stance.id === verdict.stanceId)) {
+      return Response.json({ error: "invalid_stance", hint: "结案包含不属于该争议点的立场" }, { status: 400 });
+    }
+    if (!Array.isArray(verdict.citedClueIds) || verdict.citedClueIds.some((id) => !clueIds.has(id))) {
+      return Response.json({ error: "invalid_clue", hint: "结案包含不存在的证据卡" }, { status: 400 });
+    }
+    if (new Set(verdict.citedClueIds).size !== verdict.citedClueIds.length) {
+      return Response.json({ error: "duplicate_clue", hint: "同一争议点不能重复指认证据" }, { status: 400 });
+    }
+  }
+
   // ① 陈词一致系数：唯一用 LLM 的评分项，封顶 15%，失败按 0
   let coherence = 0;
   if (llmEnabled() && body.statement && body.statement.trim()) {
