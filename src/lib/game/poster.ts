@@ -56,12 +56,22 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxW: number, max
   return lines;
 }
 
+/** 加载刘看山立绘：用 GIF 首帧抽出的 12KB PNG（原 GIF 973KB，慢网必超时）；
+ *  2.5 秒上限——慢网下宁可不画也不许海报卡死 */
 function loadFox(): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
     const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => resolve(null);
-    img.src = "/liukanshan/idle.gif"; // 动图取首帧即静止立绘
+    let settled = false;
+    const done = (value: HTMLImageElement | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    };
+    const timer = setTimeout(() => done(null), 2500);
+    img.onload = () => done(img.naturalWidth > 0 ? img : null);
+    img.onerror = () => done(null);
+    img.src = "/liukanshan/fox.png";
   });
 }
 
@@ -231,7 +241,18 @@ export async function renderPoster(input: PosterInput): Promise<Blob> {
   ctx.font = '24px Georgia, "STSong", serif';
   ctx.fillText("今日热榜即案卷 · 来和刘看山一起破案", fox ? 340 : W / 2, footY + 52);
 
-  return await new Promise<Blob>((resolve, reject) =>
-    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("海报生成失败"))), "image/png"),
-  );
+  // toBlob 带超时兜底：个别环境下回调不触发时退 dataURL 手搓 Blob，绘制永不悬停
+  const blob = await new Promise<Blob | null>((resolve) => {
+    const timer = setTimeout(() => resolve(null), 3000);
+    canvas.toBlob((b) => {
+      clearTimeout(timer);
+      resolve(b);
+    }, "image/png");
+  });
+  if (blob) return blob;
+  const dataUrl = canvas.toDataURL("image/png");
+  const bin = atob(dataUrl.slice(dataUrl.indexOf(",") + 1));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: "image/png" });
 }

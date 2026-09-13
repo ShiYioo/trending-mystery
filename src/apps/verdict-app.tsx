@@ -5,7 +5,7 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Stamp, Stars, TypeWriter } from "@/components/game";
+import { Stamp, Stars, StepProgress, TypeWriter } from "@/components/game";
 import { fetchBoard, submitVerdict } from "@/lib/game/api";
 import { renderPoster } from "@/lib/game/poster";
 import { sfx } from "@/lib/game/sfx";
@@ -28,6 +28,18 @@ export default function VerdictApp({ open }: AppProps) {
   const [coreOver, setCoreOver] = useState(false);
   const [bareConfirmed, setBareConfirmed] = useState(false);
   const [poster, setPoster] = useState<{ busy: boolean; url?: string; blob?: Blob; copied?: boolean; error?: string }>({ busy: false });
+  const [delibElapsed, setDelibElapsed] = useState(0);
+  const [posterElapsed, setPosterElapsed] = useState(0);
+
+  // 合议/绘图的秒表：一个 interval 两用，各自计时由调用方清零
+  useEffect(() => {
+    if (!submitting && !poster.busy) return;
+    const timer = setInterval(() => {
+      setDelibElapsed((t) => (submitting ? t + 1 : t));
+      setPosterElapsed((t) => (poster.busy ? t + 1 : t));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [submitting, poster.busy]);
 
   useEffect(() => {
     if (result) fetchBoard(result.caseId).then(setBoard).catch(() => setBoard([]));
@@ -37,6 +49,7 @@ export default function VerdictApp({ open }: AppProps) {
   async function handlePoster() {
     if (!result || poster.busy || poster.url) return;
     if (!caseBrief) return;
+    setPosterElapsed(0);
     setPoster({ busy: true });
     try {
       const blob = await renderPoster({
@@ -92,13 +105,36 @@ export default function VerdictApp({ open }: AppProps) {
     );
   }
 
+  // 合议中：全屏接管为分步进度卡（书记官报告是 thinking 档，可能 30 秒上下，必须给足反馈）
+  if (submitting) {
+    return (
+      <div className="space-y-4 p-5">
+        <StepProgress
+          eyebrow={`VERDICT DELIBERATION / 合议定谳 · 案件 ${caseBrief.caseId}`}
+          steps={[
+            { label: "陪审团就座 · 核验押注与证据指认", doneAt: 1 },
+            { label: "书记官评阅结案陈词", doneAt: 4 },
+            { label: "合议：比对社区共识权重", doneAt: 10 },
+            { label: "书记官撰写结案报告（分析引擎 thinking 档）", doneAt: Infinity },
+          ]}
+          elapsed={delibElapsed}
+          slowAt={18}
+          slowHint="书记官的钢笔正在赶稿"
+        />
+        <p className="text-center font-[family-name:var(--font-dossier)] text-[10px] tracking-widest text-paper-600">
+          分数由查表算出，绝无内定——请安心等待合议
+        </p>
+      </div>
+    );
+  }
+
   if (result) return <ClosingResult result={result} board={board} copied={copied} onCopy={() => {
     const text = `【热搜疑云】${caseBrief.questionTitle}\n我以 ${result.score.total} 分（${result.score.grade} 级 · ${GRADE_TITLE[result.score.grade]}）结案。\n来查今天这一案：${window.location.origin}`;
     navigator.clipboard?.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
-  }} poster={poster} onPoster={() => void handlePoster()} onCopyPoster={() => void copyPoster()} onDownloadPoster={downloadPoster} onRestart={() => {
+  }} poster={poster} posterElapsed={posterElapsed} onPoster={() => void handlePoster()} onCopyPoster={() => void copyPoster()} onDownloadPoster={downloadPoster} onRestart={() => {
     resetAll();
     open("case");
   }} />;
@@ -113,6 +149,7 @@ export default function VerdictApp({ open }: AppProps) {
   async function submit() {
     if (!caseBrief || submitting) return;
     setSubmitting(true);
+    setDelibElapsed(0);
     setError(null);
     const verdicts: VerdictSubmission[] = caseBrief.issues.map((issue) => ({
       issueId: issue.id,
@@ -276,6 +313,7 @@ function ClosingResult({
   copied,
   onCopy,
   poster,
+  posterElapsed,
   onPoster,
   onCopyPoster,
   onDownloadPoster,
@@ -286,6 +324,7 @@ function ClosingResult({
   copied: boolean;
   onCopy: () => void;
   poster: { busy: boolean; url?: string; blob?: Blob; copied?: boolean; error?: string };
+  posterElapsed: number;
   onPoster: () => void;
   onCopyPoster: () => void;
   onDownloadPoster: () => void;
@@ -295,6 +334,9 @@ function ClosingResult({
   const [impact, setImpact] = useState(false);
   useEffect(() => {
     sfx.play("reveal");
+    // 预载立绘：读者看报告的几十秒里，狐狸已经进缓存，点生成时零等待
+    const fox = new Image();
+    fox.src = "/liukanshan/fox.png";
     const target = result.score.total;
     const step = Math.max(target / 40, 0.5);
     const timer = setInterval(() => {
@@ -502,7 +544,7 @@ function ClosingResult({
                 disabled={poster.busy}
                 onClick={onPoster}
               >
-                {poster.busy ? "绘制中……" : "生成战绩海报"}
+                {poster.busy ? `绘制中……${posterElapsed}s` : "生成战绩海报"}
               </button>
             )}
             <p className="mt-1.5 text-[9px] leading-relaxed tracking-wider text-paper-600">

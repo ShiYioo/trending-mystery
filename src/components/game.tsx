@@ -7,6 +7,63 @@ import { useGame } from "@/lib/game/store";
 import { sfx } from "@/lib/game/sfx";
 import { parseMiniMarkdown, type MdInline } from "@/lib/game/markdown";
 
+/** 分步进度卡：elapsed 驱动的阶段推进（真实等待只有一个长请求，阶段按耗时推进） */
+export function StepProgress({
+  eyebrow,
+  steps,
+  elapsed,
+  slowAt = 12,
+  slowHint = "深度思考中，稍安勿躁",
+}: {
+  eyebrow: React.ReactNode;
+  steps: Array<{ label: string; doneAt: number }>;
+  elapsed: number;
+  slowAt?: number;
+  slowHint?: string;
+}) {
+  return (
+    <section className="paper-card scanline p-5">
+      <p className="eyebrow">
+        <span className="status-dot" />
+        {eyebrow}
+      </p>
+      <ul className="mt-4 space-y-2.5">
+        {steps.map((step, i) => {
+          const done = elapsed >= step.doneAt;
+          const active = !done && (i === 0 || elapsed >= steps[i - 1].doneAt);
+          return (
+            <li key={step.label} className="flex items-center gap-3 text-sm">
+              <span
+                className={`flex h-5 w-5 shrink-0 items-center justify-center border font-[family-name:var(--font-dossier)] text-[10px] ${
+                  done
+                    ? "border-signal-400 bg-signal-600/25 text-signal-300"
+                    : active
+                      ? "border-brass-400 text-brass-300"
+                      : "border-ink-600 text-paper-600"
+                }`}
+              >
+                {done ? "✓" : active ? "▶" : "·"}
+              </span>
+              <span className={done ? "text-paper-300" : active ? "text-paper-100" : "text-paper-600"}>
+                {step.label}
+                {active && <span className="ml-1 inline-block animate-pulse">……</span>}
+              </span>
+              {active && elapsed >= slowAt && (
+                <span className="ml-auto font-[family-name:var(--font-dossier)] text-[10px] tracking-widest text-brass-300">
+                  {slowHint}
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      <p className="mt-4 text-right font-[family-name:var(--font-dossier)] text-[10px] tracking-widest text-paper-600">
+        已进行 {elapsed}s
+      </p>
+    </section>
+  );
+}
+
 /** 迷你 Markdown 渲染：书记官报告的标题/加粗/列表/分隔线，档案纸风格 */
 function MiniMarkdown({ text }: { text: string }) {
   return (
