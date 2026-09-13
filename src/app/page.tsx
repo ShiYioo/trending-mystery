@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { DetectiveOffice } from "@/components/detective-office";
 import { BootSequence } from "@/components/retro-computer/boot";
 import { MonitorShell } from "@/components/retro-computer/crt";
+import { LoginScreen } from "@/components/retro-computer/login";
 import { RetroOS } from "@/components/retro-computer/os";
 import { fetchCase } from "@/lib/game/api";
 import { useGame } from "@/lib/game/store";
@@ -58,7 +59,9 @@ export default function Experience() {
 }
 
 function ComputerWithBoot() {
-  const [booted, setBooted] = useState(false);
-  if (!booted) return <BootSequence onDone={() => setBooted(true)} />;
+  // BIOS 自检 → 用户登录（知乎授权或游客）→ 桌面 OS
+  const [stage, setStage] = useState<"bios" | "login" | "os">("bios");
+  if (stage === "bios") return <BootSequence onDone={() => setStage("login")} />;
+  if (stage === "login") return <LoginScreen onDone={() => setStage("os")} />;
   return <RetroOS />;
 }
