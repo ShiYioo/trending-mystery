@@ -48,10 +48,13 @@ export async function POST(request: Request) {
   );
 
   const encoder = new TextEncoder();
+  // 玩家关窗/断网 → request.signal 中止 → 上游 fetch 立刻断开，不再白拉 token
+  const ac = new AbortController();
+  request.signal.addEventListener("abort", () => ac.abort());
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
-        for await (const chunk of chatStream("zhida-fast-1p5", messages)) {
+        for await (const chunk of chatStream("zhida-fast-1p5", messages, ac.signal)) {
           if (chunk.error || chunk.choices.some((c) => c.finish_reason === "error")) {
             controller.enqueue(
               encoder.encode(
@@ -64,11 +67,21 @@ export async function POST(request: Request) {
         }
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
       } catch (e) {
-        const message = e instanceof Error ? e.message : String(e);
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: { message } })}\n\n`));
+        // 主动中止不算错误：客户端已经走了，别再往死流里写
+        if (!ac.signal.aborted) {
+          const message = e instanceof Error ? e.message : String(e);
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: { message } })}\n\n`));
+        }
       } finally {
-        controller.close();
+        try {
+          controller.close();
+        } catch {
+          // 流已被下游取消时 close 会抛，吞掉即可
+        }
       }
+    },
+    cancel() {
+      ac.abort();
     },
   });
 

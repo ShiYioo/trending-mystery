@@ -59,20 +59,21 @@ export async function searchZhihu(query: string, count = 10): Promise<SearchData
 
 // ===== 直答（OpenAI 兼容消息结构，仅保证 model/messages/stream 三个字段） =====
 
-async function postChat(body: object): Promise<Response> {
+async function postChat(body: object, signal?: AbortSignal): Promise<Response> {
   return fetch(`${BASE_URL}/v1/chat/completions`, {
     method: "POST",
     headers: authHeaders(getZhihuAccessSecret()),
     body: JSON.stringify(body),
+    signal,
   });
 }
 
 /** 直答存在未标注的限频（实测 HTTP 429）——线性退避重试 */
-async function postChatWithRetry(body: object, attempts = 3): Promise<Response> {
-  let res = await postChat(body);
+async function postChatWithRetry(body: object, attempts = 3, signal?: AbortSignal): Promise<Response> {
+  let res = await postChat(body, signal);
   for (let i = 1; i < attempts && res.status === 429; i++) {
     await new Promise((r) => setTimeout(r, 1500 * i));
-    res = await postChat(body);
+    res = await postChat(body, signal);
   }
   return res;
 }
@@ -83,18 +84,20 @@ async function parseChatError(res: Response): Promise<never> {
 }
 
 /** 非流式：开局聚类（JSON 输出需配 extractJson 容错）、结案叙事等批量调用 */
-export async function chat(model: ZhidaModel, messages: ChatMessage[]): Promise<ChatCompletionResponse> {
-  const res = await postChatWithRetry({ model, messages, stream: false });
+export async function chat(model: ZhidaModel, messages: ChatMessage[], signal?: AbortSignal): Promise<ChatCompletionResponse> {
+  const res = await postChatWithRetry({ model, messages, stream: false }, 3, signal);
   if (!res.ok) await parseChatError(res);
   return (await res.json()) as ChatCompletionResponse;
 }
 
-/** 流式：审问室打字机。错误块与 finish_reason==="error" 由调用方检查 chunk.error */
+/** 流式：审问室打字机。错误块与 finish_reason==="error" 由调用方检查 chunk.error；
+ *  signal 中止（玩家关窗/断网）时 fetch 直接以 AbortError 结束，不再拉上游 token */
 export async function* chatStream(
   model: ZhidaModel,
   messages: ChatMessage[],
+  signal?: AbortSignal,
 ): AsyncGenerator<ChatChunk> {
-  const res = await postChatWithRetry({ model, messages, stream: true });
+  const res = await postChatWithRetry({ model, messages, stream: true }, 3, signal);
   if (!res.ok || !res.body) await parseChatError(res);
   yield* streamSse(res.body!);
 }

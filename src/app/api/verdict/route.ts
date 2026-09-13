@@ -88,9 +88,10 @@ export async function POST(request: Request) {
     }
   }
 
-  // ② 查表算分 + 榜单
+  // ② 查表算分 + 榜单（playerId 是客户端自由串，截断防超长成员膨胀 ZSET）
+  const playerId = (body.playerId || "anonymous").slice(0, 64);
   const score = scoreVerdict(brief, body.verdicts, coherence);
-  await recordScore(body.caseId, body.playerId || "anonymous", score.total);
+  await recordScore(body.caseId, playerId, score.total);
 
   // ③ 共识揭示（此刻才对玩家亮牌）+ 证据核查表（逐卡亮出真实归属）
   const consensus = brief.issues.map((issue) => ({
@@ -160,5 +161,5 @@ export async function POST(request: Request) {
     }
   }
 
-  return Response.json({ caseId: body.caseId, playerId: body.playerId, score, consensus, evidenceReview, report });
+  return Response.json({ caseId: body.caseId, playerId, score, consensus, evidenceReview, report });
 }
