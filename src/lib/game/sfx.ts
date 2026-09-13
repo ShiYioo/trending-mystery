@@ -82,6 +82,8 @@ class Sfx {
     if (!this.enabled) return;
     const ctx = this.ensure();
     if (!ctx) return;
+    // 音频未解锁（首次交互前）直接丢弃：挂起期排下的声音会在解锁后齐炸
+    if (ctx.state !== "running") return;
     switch (name) {
       case "click":
         this.tone(ctx, 720, 420, 0.05, "square", 0.05);
