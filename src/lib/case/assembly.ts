@@ -35,7 +35,7 @@ export function applyWeights(
 }
 
 /** 兼容早期/错误模型输出的 1-based idx；内部统一使用 0-based。 */
-function normalizeMapping(
+export function normalizeMapping(
   mapping: ClusterResult["items"],
   itemCount: number,
   issueCount = Number.POSITIVE_INFINITY,
@@ -59,6 +59,26 @@ function normalizeMapping(
         m.idx < itemCount &&
         (!hasIssueIndexes || (m.issue >= 0 && m.issue < issueCount)),
     );
+}
+
+/** 聚类结果必须覆盖每个争议点，否则该案件会出现天然 0 分项。 */
+export function isUsableCluster(
+  issues: Issue[],
+  itemCount: number,
+  mapping: ClusterResult["items"],
+): boolean {
+  if (issues.length === 0 || issues.some((issue) => issue.stances.length < 2)) return false;
+  const normalized = normalizeMapping(mapping, itemCount, issues.length);
+  const coveredIssues = new Set<number>();
+  const mappedItems = new Set<number>();
+  for (const entry of normalized) {
+    const issue = issues[entry.issue];
+    if (!issue?.stances.some((stance) => stance.id === entry.stance)) return false;
+    coveredIssues.add(entry.issue);
+    mappedItems.add(entry.idx);
+  }
+  const minimumCoverage = Math.max(3, Math.ceil(itemCount / 2));
+  return coveredIssues.size === issues.length && mappedItems.size >= Math.min(itemCount, minimumCoverage);
 }
 
 /** 线索卡：星级来自真实三字段，立场归属来自 LLM 映射 */

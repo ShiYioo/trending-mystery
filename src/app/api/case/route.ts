@@ -6,7 +6,14 @@
 import { cleanExcerpt, excerptFragment, groundedRatio, isGrounded, isRelatedTo } from "@/lib/clue/clean";
 import { normalizeKeyword } from "@/lib/clue/normalize";
 import { starRating } from "@/lib/clue/stars";
-import { applyWeights, buildClueCards, buildSafeBriefing, fallbackCluster, toPublicBrief } from "@/lib/case/assembly";
+import {
+  applyWeights,
+  buildClueCards,
+  buildSafeBriefing,
+  fallbackCluster,
+  isUsableCluster,
+  toPublicBrief,
+} from "@/lib/case/assembly";
 import { buildClusterFixMessages, buildClusterMessages, type ClusterResult } from "@/lib/case/prompts";
 import type { CaseBrief, ChatMessage, Issue, SearchData } from "@/lib/types";
 import { llmEnabled } from "@/lib/env";
@@ -124,6 +131,13 @@ export async function GET(request: Request) {
             ? iss
             : { ...iss, title: `关于「${excerptFragment(picked.Title, 24)}」，社区更倾向哪一方？` },
         );
+        if (!isUsableCluster(candidate.issues.map((iss, i) => ({
+          id: `issue_${i + 1}`,
+          title: iss.title,
+          stances: iss.stances.map((s) => ({ ...s, clusterWeight: 0 })),
+        })), clusterItems.length, candidate.items)) {
+          throw new Error("cluster_mapping_invalid");
+        }
         parsed = candidate;
       } catch {
         parsed = null;

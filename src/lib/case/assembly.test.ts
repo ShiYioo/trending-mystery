@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyWeights, buildClueCards, fallbackCluster, toPublicBrief } from "./assembly";
+import { applyWeights, buildClueCards, fallbackCluster, isUsableCluster, toPublicBrief } from "./assembly";
 import type { CaseBrief, SearchItem } from "../types";
 
 const mkItem = (over: Partial<SearchItem>): SearchItem => ({
@@ -119,6 +119,30 @@ describe("buildClueCards 星级与归属", () => {
     expect(cards[0].supportsStance).toBe("s1");
     expect(cards[0].excerpt.length).toBe(200);
     expect(cards[0].id).toBe("c_01");
+  });
+});
+
+describe("isUsableCluster 聚类质量校验", () => {
+  const issues = [
+    { id: "i1", title: "q1", stances: [{ id: "s1", label: "A", clusterWeight: 0 }, { id: "s2", label: "B", clusterWeight: 0 }] },
+    { id: "i2", title: "q2", stances: [{ id: "s3", label: "C", clusterWeight: 0 }, { id: "s4", label: "D", clusterWeight: 0 }] },
+  ];
+
+  it("拒绝缺少争议点映射或无效立场", () => {
+    expect(isUsableCluster(issues, 4, [{ idx: 0, issue: 0, stance: "s1" }])).toBe(false);
+    expect(isUsableCluster(issues, 4, [
+      { idx: 0, issue: 0, stance: "bad" },
+      { idx: 1, issue: 1, stance: "s3" },
+    ])).toBe(false);
+  });
+
+  it("接受覆盖两个争议点的 1-based 映射", () => {
+    expect(isUsableCluster(issues, 4, [
+      { idx: 1, issue: 1, stance: "s1" },
+      { idx: 2, issue: 1, stance: "s2" },
+      { idx: 3, issue: 2, stance: "s3" },
+      { idx: 4, issue: 2, stance: "s4" },
+    ])).toBe(true);
   });
 });
 
