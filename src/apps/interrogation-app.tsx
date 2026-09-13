@@ -13,6 +13,15 @@ import type { AppProps } from "./types";
 
 const EVIDENCE_TAG = "【出示证物】";
 
+// 身份类问题是直答的硬编码反射（实测连反制指令都压不住，必自称"知乎直答"），
+// 本地以刘看山口吻代答：零额度、永远在戏里，渲染走同一条打字机路径。
+const IDENTITY_RE = /你是谁(?!的)|你叫什么|你的名字|介绍(?:一下)?你自己|who are you/i;
+const IDENTITY_LINES = [
+  "刘看山啊，知乎上谁不认识我？热榜上的热闹，哪场我没围观过。这案子我也是从头看到尾……你想问哪件事，直说。",
+  "一只狐狸而已，叫刘看山。你们人类的热闹我见得多了——这不，看热闹看出事，被请来喝茶了。问吧，问具体的。",
+  "我是刘看山，本街区的遛弯儿常客。别盯着我的尾巴看，盯着案子。想问什么？",
+];
+
 export default function InterrogationApp({ open }: AppProps) {
   const { caseBrief, collected, history, setHistory } = useGame();
   const [input, setInput] = useState("");
@@ -55,6 +64,27 @@ export default function InterrogationApp({ open }: AppProps) {
     setHistory(nextHistory);
     setPendingEvidence([]);
 
+    // 身份问题：本地代答，打字机节奏与 SSE 供电一致
+    if (IDENTITY_RE.test(question)) {
+      const answer = IDENTITY_LINES[Math.floor(Math.random() * IDENTITY_LINES.length)];
+      setStreaming(true);
+      setStreamText("");
+      await new Promise<void>((resolve) => {
+        let i = 0;
+        const timer = window.setInterval(() => {
+          i = Math.min(answer.length, i + 2);
+          setStreamText(answer.slice(0, i));
+          if (i >= answer.length) {
+            window.clearInterval(timer);
+            resolve();
+          }
+        }, 40);
+      });
+      setStreaming(false);
+      setHistory([...nextHistory, { role: "assistant", content: answer }]);
+      return;
+    }
+
     setStreaming(true);
     setStreamText("");
     let answer = "";
@@ -90,7 +120,7 @@ export default function InterrogationApp({ open }: AppProps) {
             <span className="status-dot" />INTERROGATION / 审问终端
           </h1>
           <span className="font-[family-name:var(--font-dossier)] text-xs text-paper-600">
-            当事人 · 本案知情者
+            当事人 · 刘看山
           </span>
           <Stamp tone="dim" className="ml-auto text-[10px]">
             全程记录在案
@@ -128,19 +158,17 @@ export default function InterrogationApp({ open }: AppProps) {
         </div>
         <div className="flex items-center gap-4 border-b border-ink-700/60 pb-4">
           <div className={`relative shrink-0 ${streaming ? "portrait-speaking" : ""}`}>
-            <svg width="56" height="66" viewBox="0 0 120 140" aria-hidden className="portrait-breath">
-              <ellipse cx="60" cy="72" rx="46" ry="62" fill="#120e09" stroke="#d4a24e" strokeOpacity="0.35" strokeWidth="2" />
-              <g fill="#080604">
-                <path d="M22 52 Q60 34 98 52 L103 59 Q60 50 17 59 Z" />
-                <path d="M42 51 Q44 30 60 28 Q76 30 78 51 Z" />
-                <circle cx="60" cy="60" r="13" />
-                <path d="M24 134 Q34 96 60 93 Q86 96 96 134 Z" />
-              </g>
-              <g fill="none" stroke="#d4a24e" strokeOpacity="0.5" strokeWidth="1.2">
-                <path d="M44 49 Q46 31 60 29" />
-                <path d="M26 132 Q36 98 60 95" />
-              </g>
-            </svg>
+            {/* 档案登记照风格的相框，装着本案知情者：刘看山（晃悠着，坐不住） */}
+            <div className="flex h-[80px] w-[66px] items-center justify-center overflow-hidden border border-brass-400/50 bg-[radial-gradient(ellipse_at_50%_30%,#241c11,#0c0906)] shadow-[inset_0_0_18px_rgba(0,0,0,0.8)]">
+              {/* eslint-disable-next-line @next/next/no-img-element -- GIF 动图，next/image 会抽帧成静态图 */}
+              <img
+                src="/liukanshan/sway.gif"
+                alt="刘看山"
+                draggable={false}
+                className="h-[72px] w-[72px] select-none"
+                style={{ filter: "saturate(0.85) sepia(0.12) contrast(0.96)" }}
+              />
+            </div>
             {streaming && (
               <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 font-[family-name:var(--font-dossier)] text-[9px] tracking-widest text-brass-300">
                 供述中
@@ -149,7 +177,7 @@ export default function InterrogationApp({ open }: AppProps) {
           </div>
           <div>
             <p className="font-[family-name:var(--font-dossier)] text-xs tracking-[0.25em] text-brass-400">
-              当事人 · 本案知情者
+              当事人 · 刘看山（本案知情者）
             </p>
             <p className="mt-1 text-xs leading-relaxed text-paper-600">
               {streaming ? "他正在斟酌措辞……" : "「那晚的事……你想从哪里问起？」"}

@@ -91,7 +91,11 @@ ${review}
   ];
 }
 
-/** 审问室当事人人设：有据可依，但问得不够细就避重就轻（README §2 房间三） */
+/**
+ * 审问室当事人人设：刘看山——有据可依，但问得不够细就避重就轻（README §2 房间三）。
+ * 实测（2026-09-13）：直答端点不消费 system 角色（拿去当检索材料），人设必须整体折进
+ * 最后一条 user 消息才生效；纯身份问题（你是谁）另有前端本地拦截，见 interrogation-app。
+ */
 export function buildPersonaMessages(
   briefing: string,
   questionTitle: string,
@@ -101,19 +105,27 @@ export function buildPersonaMessages(
   const evidence = shownExcerpts.length
     ? `\n\n【已被出示的证据摘要（必须正面回应，不得否认其存在）】\n${shownExcerpts.map((e, i) => `证据${i + 1}：${e}`).join("\n")}`
     : "";
-  return [
-    {
-      role: "system",
-      content: `你在侦探游戏《热搜疑云》的审问室里扮演本案的当事人/知情者。案件背景：${questionTitle}。案情：${briefing}
+  const persona = `【审问室角色设定（给扮演者的指令，绝不复述给玩家）】
+你在侦探游戏《热搜疑云》的审问室里扮演本案的知情者——刘看山。案件背景：${questionTitle}。案情：${briefing}
+
+你的身份：刘看山，知乎家喻户晓的小白狐，热榜世界的原住民。哪里有热闹哪里就有你，这个案子你从头围观到尾，各方说法你都听过一耳朵，所以被侦探请来问话。
 
 扮演规则：
 1. 只依据案件背景、已知事实和被出示的证据回答；不知道的就说"记不清了"，绝不编造具体数字。
 2. 玩家问得笼统（如"说说怎么回事""谁的责任"）时，你打太极、避重就轻，只重复公开口径。
 3. 玩家出示了与你先前说法矛盾的具体证据时，你必须承认该细节并补出一点新信息，但仍试图转移焦点。
-4. 始终第一人称，保持角色，不跳出扮演，不提及自己是 AI。每次回答不超过 120 字，口语化。${evidence}`,
-    },
-    ...history,
-  ];
+4. 始终第一人称，保持刘看山的角色，不跳出扮演，不提及自己是 AI 或搜索产品。每次回答不超过 120 字，口语化。${evidence}`;
+
+  // 人设折叠进最后一条 user 消息（玩家本轮的问话），历史消息原样保留
+  const dialog = [...history];
+  const last = dialog[dialog.length - 1];
+  if (last?.role === "user") {
+    dialog[dialog.length - 1] = {
+      role: "user",
+      content: `${persona}\n\n（全程以刘看山身份回答。玩家的问话：）\n${last.content}`,
+    };
+  }
+  return dialog;
 }
 
 /** 陈词一致分：判断自由文本与所选立场是否自洽、是否真引用线索（0~1，代码侧封顶 15%） */
