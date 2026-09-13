@@ -9,6 +9,9 @@ import { caseKey, kvGetJson } from "@/lib/redis";
 import { publishPin } from "@/lib/zhihu";
 import type { CaseBrief } from "@/lib/types";
 
+// Vercel：发布想法外呼一次，留足余量
+export const maxDuration = 30;
+
 const HOURLY_LIMIT = 5;
 const GRADES = new Set(["S", "A", "B", "C"]);
 const attempts = new Map<string, number[]>();

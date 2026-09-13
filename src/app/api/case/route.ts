@@ -28,6 +28,9 @@ import {
 } from "@/lib/redis";
 import { chat, extractJson, getHotList, searchZhihu, ZhihuApiError } from "@/lib/zhihu";
 
+// Vercel：案件生成含至多两次 thinking 档直答调用，吃满 Hobby 档 60s 上限
+export const maxDuration = 60;
+
 const HOTLIST_TTL = 3600;
 const SEARCH_TTL = 6 * 3600;
 const CASE_TTL = 24 * 3600;

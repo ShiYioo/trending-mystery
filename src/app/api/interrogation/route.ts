@@ -8,6 +8,9 @@ import { caseKey, kvGetJson } from "@/lib/redis";
 import { chatStream } from "@/lib/zhihu";
 import type { CaseBrief, ChatMessage } from "@/lib/types";
 
+// Vercel：SSE 流式长回答需要足够运行时长
+export const maxDuration = 60;
+
 /** 直答多轮上下文截断：只带最近 12 条，控制长度与延迟 */
 const MAX_HISTORY = 12;
 

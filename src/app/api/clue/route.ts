@@ -10,6 +10,9 @@ import { caseKey, cacheAside, kvGetJson, searchCacheKey } from "@/lib/redis";
 import { searchZhihu, ZhihuApiError } from "@/lib/zhihu";
 import type { CaseBrief } from "@/lib/types";
 
+// Vercel：搜索外呼 + 清洗，冷启动留余量
+export const maxDuration = 30;
+
 const SEARCH_CACHE_TTL_SECONDS = 6 * 3600;
 const WHISPERS_PER_CARD = 3;
 

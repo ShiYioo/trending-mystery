@@ -8,6 +8,9 @@ import { chat, extractJson } from "@/lib/zhihu";
 import { scoreVerdict } from "@/lib/verdict/scoring";
 import type { CaseBrief, ClosingRequest } from "@/lib/types";
 
+// Vercel：书记官报告用 thinking 档，给满上限
+export const maxDuration = 60;
+
 const QUOTA_SAFE_CLAMP = (n: number) => Math.min(Math.max(Number.isFinite(n) ? n : 0, 0), 1);
 
 /** LLM 评分不可用时的保守兜底：只按玩家陈词与已选立场/证据的词面重合给部分分。 */
