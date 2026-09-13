@@ -25,6 +25,7 @@ export default function VerdictApp({ open }: AppProps) {
   const [copied, setCopied] = useState(false);
   const [coreIssue, setCoreIssue] = useState<string | null>(null);
   const [coreOver, setCoreOver] = useState(false);
+  const [bareConfirmed, setBareConfirmed] = useState(false);
 
   useEffect(() => {
     if (result) fetchBoard(result.caseId).then(setBoard).catch(() => setBoard([]));
@@ -55,6 +56,10 @@ export default function VerdictApp({ open }: AppProps) {
 
   const pool = collected.filter((c) => c.cardId);
   const allChosen = caseBrief.issues.every((i) => selections[i.id]);
+  const totalCited = caseBrief.issues.reduce(
+    (n, issue) => n + (citations[issue.id] ?? []).length,
+    0,
+  );
 
   async function submit() {
     if (!caseBrief || submitting) return;
@@ -185,12 +190,30 @@ export default function VerdictApp({ open }: AppProps) {
           onChange={(e) => setStatement(e.target.value)}
         />
         {error && <p className="text-xs text-blood-400">⚠ {error}</p>}
+        {allChosen && totalCited === 0 && !submitting && (
+          <p className="alert-pulse border border-blood-600/50 p-2.5 font-[family-name:var(--font-dossier)] text-[11px] leading-relaxed text-blood-400">
+            {bareConfirmed
+              ? "再点一次「确认裸奔提交」——证据分将为 0，最高只剩 65 分。"
+              : "⚠ 尚未指认任何证据（证据指认占 35% 分数）。回到上方选择支持你立场的核心证物，或再点一次提交确认裸奔。"}
+          </p>
+        )}
         <div className="flex items-center justify-between">
           <button onClick={() => open("interrogation")} className="font-[family-name:var(--font-dossier)] text-xs text-paper-600 hover:text-brass-400">
             ← 再审一轮
           </button>
-          <button className="btn-brass px-8 py-2.5 font-[family-name:var(--font-dossier)] text-sm tracking-[0.2em]" disabled={!allChosen || submitting} onClick={() => void submit()}>
-            {submitting ? "合议中…" : "⚖ 提交结案"}
+          <button
+            className="btn-brass px-8 py-2.5 font-[family-name:var(--font-dossier)] text-sm tracking-[0.2em]"
+            disabled={!allChosen || submitting}
+            onClick={() => {
+              if (totalCited === 0 && !bareConfirmed) {
+                setBareConfirmed(true);
+                sfx.play("click");
+                return;
+              }
+              void submit();
+            }}
+          >
+            {submitting ? "合议中…" : bareConfirmed && totalCited === 0 ? "确认裸奔提交" : "⚖ 提交结案"}
           </button>
         </div>
       </section>
@@ -281,6 +304,52 @@ function ClosingResult({
           ))}
         </div>
       </section>
+
+      {/* 证据核查表：逐卡亮出真实归属——玩家可核对系统的判分依据 */}
+      {result.evidenceReview?.some((r) => r.cards.length > 0) && (
+        <section className="paper-card p-5">
+          <p className="eyebrow"><span className="status-dot" />EVIDENCE AUDIT / 证据核查表</p>
+          <p className="mt-2 text-xs leading-relaxed text-paper-600">
+            逐卡亮出你指认证物的真实立场归属（结案前保密）。命中记分、误指倒扣——若你认为归属判定与原文相悖，这就是申诉的依据。
+          </p>
+          <div className="mt-4 space-y-5">
+            {result.evidenceReview.map((review) =>
+              review.cards.length === 0 ? null : (
+                <div key={review.issueId}>
+                  <h3 className="text-sm text-paper-100">
+                    {review.title}
+                    <span className="ml-2 font-[family-name:var(--font-dossier)] text-[10px] text-brass-300">
+                      押「{review.chosenLabel}」
+                    </span>
+                  </h3>
+                  <ul className="mt-2 space-y-1.5">
+                    {review.cards.map((card) => (
+                      <li
+                        key={card.id}
+                        className={`flex flex-wrap items-center gap-x-3 gap-y-1 border px-3 py-1.5 text-xs ${
+                          card.hit ? "border-brass-400/50 bg-brass-600/10" : "border-blood-600/40"
+                        }`}
+                      >
+                        <Stars n={card.stars} className="shrink-0 text-[10px]" />
+                        <span className="max-w-md truncate text-paper-300">{card.excerpt}</span>
+                        {card.hit ? (
+                          <span className="ml-auto shrink-0 font-[family-name:var(--font-dossier)] text-[10px] tracking-widest text-brass-300">
+                            ✓ 命中 · 支持你的押注
+                          </span>
+                        ) : (
+                          <span className="ml-auto shrink-0 font-[family-name:var(--font-dossier)] text-[10px] tracking-widest text-blood-400">
+                            ✗ 实际支持「{card.actualStanceLabel}」· 倒扣
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ),
+            )}
+          </div>
+        </section>
+      )}
 
       <motion.section
         animate={impact ? { x: [0, -9, 9, -5, 5, 0] } : { x: 0 }}

@@ -139,30 +139,41 @@ coherence 评分标准（0~1）：陈词与所押立场逻辑一致（0.4）+ �
   ];
 }
 
-/** 结案报告：分数已由代码算定，LLM 只做侦探风解说（AI 不当裁判） */
-export function buildReportMessages(input: {
+/** 结案报告：分数已由代码算定，LLM 只做数据解说——书记官不当法官（README §4.5） */
+export interface ReportInput {
   questionTitle: string;
   briefing: string;
-  grades: string[];
-  chosenLabels: string[];
-  consensusLines: string[];
+  perIssue: Array<{ issueTitle: string; chosenLabel: string; weightPct: number }>;
+  evidenceScore: number;
+  citedCount: number;
+  statementScore: number;
+  hasStatement: boolean;
   total: number;
   grade: string;
-}): ChatMessage[] {
+}
+
+export function buildReportMessages(input: ReportInput): ChatMessage[] {
   return [
     {
       role: "system",
-      content: "你是《热搜疑云》的结案法官，文风：冷峻、克制、带侦探小说腔调。直接输出报告正文，200字内，不要标题。",
+      content: `你是《热搜疑云》的结案书记官——记分员，不是法官。纪律：
+1. 只解说给定的数据：押注与共识分布、证据指认情况、陈词得分；不得评价玩家结论的"事实真伪"。
+2. 禁止出现"证据不足""足以证明""事实认定""关键偏差"这类真相判断措辞——本游戏度量的是玩家与社区共识的距离，不是真相。
+3. 只可使用案情简报与给定数据中的信息，禁止编造任何细节。
+4. 结构（200字内）：① 逐争议点复述押注与共识百分比；② 点评证据指认——指认为 0 就直说"档案袋未指认任何证物，证据分记零"；③ 一句话点评陈词；④ 侦探式收尾一句。`,
     },
     {
       role: "user",
       content: `案件：${input.questionTitle}
-案情：${input.briefing}
-玩家结论：${input.chosenLabels.join("；")}
-社区共识分布：${input.consensusLines.join("；")}
-玩家总分：${input.total}（评级 ${input.grade}）
+案情简报：${input.briefing}
 
-写结案报告：先陈述玩家结论，再对照社区共识点出分歧或吻合，最后一句侦探式的收尾评语。`,
+逐争议点数据：
+${input.perIssue.map((p) => `- ${p.issueTitle}：玩家押「${p.chosenLabel}」，该立场共识权重 ${p.weightPct}%`).join("\n")}
+证据指认：指认 ${input.citedCount} 张证物，证据分 ${input.evidenceScore}/100
+结案陈词：${input.hasStatement ? `已提交，陈词分 ${input.statementScore}/100` : "未提交，陈词分记 0"}
+总分 ${input.total}（${input.grade} 级）
+
+请输出结案报告。`,
     },
   ];
 }

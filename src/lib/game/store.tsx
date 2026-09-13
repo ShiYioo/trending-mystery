@@ -40,6 +40,19 @@ export interface VerdictResponse {
     title: string;
     stances: Array<{ id: string; label: string; weight: number }>;
   }>;
+  /** 证据核查表：逐张亮出被指认卡的真实立场归属——玩家可核对系统的判分依据 */
+  evidenceReview: Array<{
+    issueId: string;
+    title: string;
+    chosenLabel: string;
+    cards: Array<{
+      id: string;
+      excerpt: string;
+      stars: number;
+      hit: boolean;
+      actualStanceLabel: string;
+    }>;
+  }>;
   report: string;
 }
 
