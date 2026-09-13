@@ -10,6 +10,17 @@ import type { CaseBrief, ClosingRequest } from "@/lib/types";
 
 const QUOTA_SAFE_CLAMP = (n: number) => Math.min(Math.max(Number.isFinite(n) ? n : 0, 0), 1);
 
+/** LLM 评分不可用时的保守兜底：只按玩家陈词与已选立场/证据的词面重合给部分分。 */
+function fallbackCoherence(statement: string, labels: string[], excerpts: string[]): number {
+  const text = `${statement}${labels.join("")}${excerpts.join("")}`.replace(/[\s，。！？、；：（）《》“”‘’！？,.!?;:()[\]{}<>]/g, "");
+  const meaningful = [...new Set(text.match(/[\u4e00-\u9fff]{2,}|[A-Za-z0-9]{3,}/g) ?? [])];
+  if (!meaningful.length) return 0;
+  const statementText = statement.replace(/[\s，。！？、；：（）《》“”‘’！？,.!?;:()[\]{}<>]/g, "");
+  const hits = meaningful.filter((term) => statementText.includes(term)).length;
+  const coverage = hits / meaningful.length;
+  return QUOTA_SAFE_CLAMP(0.25 + coverage * 0.75);
+}
+
 export async function POST(request: Request) {
   let body: ClosingRequest;
   try {
@@ -42,9 +53,12 @@ export async function POST(request: Request) {
       const raw = (
         await chat("zhida-fast-1p5", buildCoherenceMessages(body.statement, chosenLabels, citedExcerpts))
       ).choices[0].message.content;
-      coherence = QUOTA_SAFE_CLAMP(extractJson<{ coherence: number }>(raw).coherence);
+      const parsed = extractJson<{ coherence?: number | string }>(raw);
+      const value = typeof parsed.coherence === "string" ? Number(parsed.coherence) : parsed.coherence;
+      if (!Number.isFinite(value)) throw new Error("invalid coherence value");
+      coherence = QUOTA_SAFE_CLAMP(value);
     } catch {
-      coherence = 0; // 评分不因 LLM 抖动而失败
+      coherence = fallbackCoherence(body.statement, chosenLabels, citedExcerpts);
     }
   }
 
