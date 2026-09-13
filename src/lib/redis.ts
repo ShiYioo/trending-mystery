@@ -151,7 +151,8 @@ export async function recordScore(caseId: string, playerId: string, score: numbe
   }
   const key = boardKey(caseId);
   const redis = getRedis();
-  await redis.zadd(key, score, playerId);
+  // GT：只在更高时更新——重玩同案拿低分不会把榜上最高分刷掉（与内存降级版 Math.max 语义一致）
+  await redis.zadd(key, "GT", score, playerId);
   // 首次写入挂 7 天 TTL：与全系统按日自清理一致，覆盖次日回看，M3 历史战绩留余量
   if ((await redis.ttl(key)) === -1) {
     await redis.expire(key, 7 * 24 * 3600);

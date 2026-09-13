@@ -76,6 +76,8 @@ interface GameStore extends GameState {
 const STORAGE_KEY = "tm_game_v1";
 const PLAYER_KEY = "tm_player_id";
 const MAX_COLLECTED = 24;
+/** 档案保质期：服务端案件 TTL 24h，客户端留 4h 裕量——隔夜回来不再抱着死案 */
+const SAVE_TTL_MS = 20 * 3600 * 1000;
 
 const emptyState: GameState = {
   playerId: "",
@@ -95,13 +97,23 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const pid = localStorage.getItem(PLAYER_KEY) ?? crypto.randomUUID();
     localStorage.setItem(PLAYER_KEY, pid);
-    let restored: Partial<GameState> = {};
+    let restored: Partial<GameState> & { savedAt?: number } = {};
     try {
-      restored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}") as Partial<GameState>;
+      restored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}") as Partial<GameState> & {
+        savedAt?: number;
+      };
     } catch {
       restored = {};
     }
-    setState({ ...emptyState, ...restored, playerId: pid });
+    // 陈案清理：服务端案件 24h 过期，过期档案的审问/结案只会 404——不如开局就清干净
+    const stale = !restored.savedAt || Date.now() - restored.savedAt > SAVE_TTL_MS;
+    setState({
+      ...emptyState,
+      ...(stale
+        ? { caseBrief: null, collected: [], history: [], result: null }
+        : restored),
+      playerId: pid,
+    });
     fetch("/api/oauth/user")
       .then((res) => (res.ok ? res.json() : null))
       .then((data: { profile?: { name: string; headline: string } } | null) => {
@@ -119,6 +131,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         collected: state.collected,
         history: state.history,
         result: state.result,
+        savedAt: Date.now(),
       }),
     );
   }, [state.playerId, state.caseBrief, state.collected, state.history, state.result]);

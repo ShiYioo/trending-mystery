@@ -5,6 +5,57 @@
 import { useEffect, useState } from "react";
 import { useGame } from "@/lib/game/store";
 import { sfx } from "@/lib/game/sfx";
+import { parseMiniMarkdown, type MdInline } from "@/lib/game/markdown";
+
+/** 迷你 Markdown 渲染：书记官报告的标题/加粗/列表/分隔线，档案纸风格 */
+function MiniMarkdown({ text }: { text: string }) {
+  return (
+    <>
+      {parseMiniMarkdown(text).map((block, i) => {
+        if (block.type === "hr") return <div key={i} className="my-2 border-t border-ink-700" />;
+        const inline = block.inlines.map((seg: MdInline, j) =>
+          seg.bold ? (
+            <strong key={j} className="font-bold text-paper-100">
+              {seg.text}
+            </strong>
+          ) : (
+            <span key={j}>{seg.text}</span>
+          ),
+        );
+        if (block.type === "h1")
+          return (
+            <p key={i} className="mb-1 mt-2 text-sm font-bold tracking-[0.2em] text-brass-300">
+              {inline}
+            </p>
+          );
+        if (block.type === "h2")
+          return (
+            <p key={i} className="mb-1 mt-2 border-b border-brass-600/30 pb-0.5 text-xs font-bold tracking-widest text-brass-400">
+              {inline}
+            </p>
+          );
+        if (block.type === "h3")
+          return (
+            <p key={i} className="mt-1.5 text-xs font-bold text-paper-200">
+              {inline}
+            </p>
+          );
+        if (block.type === "li")
+          return (
+            <p key={i} className="ml-3 text-xs leading-relaxed text-paper-300">
+              <span className="text-brass-400">· </span>
+              {inline}
+            </p>
+          );
+        return (
+          <p key={i} className="text-xs leading-relaxed text-paper-300">
+            {inline}
+          </p>
+        );
+      })}
+    </>
+  );
+}
 
 export function Stars({ n, className = "" }: { n: number; className?: string }) {
   return (
@@ -34,11 +85,14 @@ export function TypeWriter({
   speed = 26,
   className = "",
   sound = true,
+  markdown = false,
 }: {
   text: string;
   speed?: number;
   className?: string;
   sound?: boolean;
+  /** 迷你 Markdown 渲染（标题/加粗/列表），打字过程中逐帧重解析 */
+  markdown?: boolean;
 }) {
   const [n, setN] = useState(0);
   useEffect(() => {
@@ -55,6 +109,14 @@ export function TypeWriter({
     }, speed);
     return () => clearInterval(timer);
   }, [text, speed, sound]);
+  if (markdown) {
+    return (
+      <div className={className}>
+        <MiniMarkdown text={text.slice(0, n)} />
+        {n < text.length && <span className="tw-cursor" aria-hidden />}
+      </div>
+    );
+  }
   return (
     <span className={className}>
       {text.slice(0, n)}

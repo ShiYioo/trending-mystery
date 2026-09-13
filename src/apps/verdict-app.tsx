@@ -397,8 +397,8 @@ function ClosingResult({
         <h2 className="font-[family-name:var(--font-dossier)] text-xs tracking-[0.25em] text-brass-400">
           结案报告
         </h2>
-        <p className="mt-4 whitespace-pre-wrap leading-loose text-paper-200">
-          <TypeWriter text={result.report} speed={14} />
+        <p className="mt-4 leading-loose text-paper-200">
+          <TypeWriter text={result.report} speed={14} markdown />
         </p>
       </section>
 
