@@ -21,7 +21,8 @@ export function applyWeights(
     for (const stance of issue.stances) stance.clusterWeight = 0;
   }
   const issueByIdx = new Map(issues.map((i) => [issues.indexOf(i), i]));
-  for (const m of mapping) {
+  const normalized = normalizeMapping(mapping, items.length);
+  for (const m of normalized) {
     const item = items[m.idx];
     const issue = issueByIdx.get(m.issue);
     const stance = issue?.stances.find((s) => s.id === m.stance);
@@ -33,12 +34,21 @@ export function applyWeights(
   }
 }
 
+/** 兼容早期/错误模型输出的 1-based idx；内部统一使用 0-based。 */
+function normalizeMapping(mapping: ClusterResult["items"], itemCount: number): ClusterResult["items"] {
+  const valid = mapping.filter((m) => Number.isInteger(m.idx));
+  const isOneBased = valid.some((m) => m.idx === itemCount) && !valid.some((m) => m.idx === 0);
+  return valid
+    .map((m) => ({ ...m, idx: isOneBased ? m.idx - 1 : m.idx }))
+    .filter((m) => m.idx >= 0 && m.idx < itemCount);
+}
+
 /** 线索卡：星级来自真实三字段，立场归属来自 LLM 映射 */
 export function buildClueCards(
   searchItems: SearchItem[],
   mapping: ClusterResult["items"],
 ): ClueCard[] {
-  const stanceByIdx = new Map(mapping.map((m) => [m.idx, m.stance]));
+  const stanceByIdx = new Map(normalizeMapping(mapping, searchItems.length).map((m) => [m.idx, m.stance]));
   return searchItems.map((it, i) => ({
     id: `c_${String(i + 1).padStart(2, "0")}`,
     stars: starRating({

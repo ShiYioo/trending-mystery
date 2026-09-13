@@ -21,6 +21,18 @@ const mkItem = (over: Partial<SearchItem>): SearchItem => ({
 });
 
 describe("applyWeights 权威加权的共识权重", () => {
+  it("兼容模型误返回的 1-based idx，不发生整体错位", () => {
+    const issues = [{ id: "i1", title: "q", stances: [
+      { id: "s1", label: "A", clusterWeight: 0 },
+      { id: "s2", label: "B", clusterWeight: 0 },
+    ] }];
+    applyWeights(issues, [{ votes: 100 }, { votes: 10 }], [
+      { idx: 1, issue: 0, stance: "s1" },
+      { idx: 2, issue: 0, stance: "s2" },
+    ]);
+    expect(issues[0].stances[0].clusterWeight).toBeGreaterThan(issues[0].stances[1].clusterWeight);
+  });
+
   it("按 log 赞数份额计算 clusterWeight，与模型输出无关", () => {
     const issues = [
       {
