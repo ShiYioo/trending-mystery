@@ -16,10 +16,24 @@ export default function CaseApp({ open }: AppProps) {
   const { caseBrief, setCase } = useGame();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingRank, setPendingRank] = useState<number | null>(null);
+  const [rankSel, setRankSel] = useState("1");
+  const [elapsed, setElapsed] = useState(0);
+
+  // 加载分步提示：与后端真实阶段对应（热榜缓存秒回 → 检索 1~2s → 聚类长尾）
+  useEffect(() => {
+    if (pendingRank === null) {
+      setElapsed(0);
+      return;
+    }
+    const timer = setInterval(() => setElapsed((s) => s + 1), 1000);
+    return () => clearInterval(timer);
+  }, [pendingRank]);
 
   const load = useCallback(
     async (rank: number) => {
       setLoading(true);
+      setPendingRank(rank);
       setError(null);
       try {
         setCase(await fetchCase(rank));
@@ -27,6 +41,7 @@ export default function CaseApp({ open }: AppProps) {
         setError(e instanceof Error ? e.message : "领取案件失败");
       } finally {
         setLoading(false);
+        setPendingRank(null);
       }
     },
     [setCase],
@@ -64,11 +79,57 @@ export default function CaseApp({ open }: AppProps) {
         </div>
       </div>
 
+      {pendingRank !== null && (
+        <motion.section
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="paper-card scanline p-5"
+        >
+          <p className="eyebrow"><span className="status-dot" />ARCHIVE PULL / 档案科调卷 · 热榜第 {pendingRank} 案</p>
+          <ul className="mt-4 space-y-2.5">
+            {(
+              [
+                { label: "调取热榜卷宗", doneAt: 1 },
+                { label: "检索取证（知乎站内真实回答）", doneAt: 3 },
+                { label: "分析引擎聚类：争议点 · 立场牌 · 共识权重", doneAt: Infinity },
+              ] as const
+            ).map((step, i) => {
+              const done = elapsed >= step.doneAt;
+              const active = !done && (i === 0 || elapsed >= ([1, 3][i - 1] ?? 0));
+              return (
+                <li key={step.label} className="flex items-center gap-3 text-sm">
+                  <span
+                    className={`flex h-5 w-5 shrink-0 items-center justify-center border font-[family-name:var(--font-dossier)] text-[10px] ${
+                      done
+                        ? "border-signal-400 bg-signal-600/25 text-signal-300"
+                        : active
+                          ? "border-brass-400 text-brass-300"
+                          : "border-ink-600 text-paper-600"
+                    }`}
+                  >
+                    {done ? "✓" : active ? "▶" : "·"}
+                  </span>
+                  <span className={done ? "text-paper-300" : active ? "text-paper-100" : "text-paper-600"}>
+                    {step.label}
+                    {active && <span className="ml-1 inline-block animate-pulse">……</span>}
+                  </span>
+                  {active && elapsed >= 12 && (
+                    <span className="ml-auto font-[family-name:var(--font-dossier)] text-[10px] tracking-widest text-brass-300">
+                      深度思考中，稍安勿躁
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </motion.section>
+      )}
+
       <motion.section
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-        className="paper-card scanline relative overflow-hidden p-5 pt-7 md:p-7 md:pt-8"
+        className={`paper-card scanline relative overflow-hidden p-5 pt-7 transition-opacity md:p-7 md:pt-8 ${pendingRank !== null ? "opacity-40" : ""}`}
       >
         <div className="absolute left-0 top-0 h-1 w-1/3 bg-gradient-to-r from-signal-400 to-transparent" />
         <div className="absolute right-6 top-6 rotate-6">
@@ -167,9 +228,13 @@ export default function CaseApp({ open }: AppProps) {
         <label className="flex items-center gap-2 font-[family-name:var(--font-dossier)] text-xs text-paper-600">
           换一桩
           <select
-            className="input-detective px-2 py-1 text-xs"
-            onChange={(e) => load(Number(e.target.value))}
-            defaultValue="1"
+            className="input-detective px-2 py-1 text-xs disabled:opacity-50"
+            disabled={loading}
+            value={rankSel}
+            onChange={(e) => {
+              setRankSel(e.target.value);
+              load(Number(e.target.value));
+            }}
           >
             {[1, 2, 3, 4, 5].map((n) => (
               <option key={n} value={n}>

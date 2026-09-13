@@ -162,8 +162,9 @@ export async function GET(request: Request) {
     };
     await kvSetJson(caseKey(caseId), brief, CASE_TTL);
 
-    // 预热检索词：玩家搜这些词时命中缓存，零配额（失败不阻断）
-    await Promise.allSettled(
+    // 预热检索词：玩家搜这些词时命中缓存，零配额——不阻塞响应，后台跑完即可
+    // （自管 node 进程常驻，响应返回后继续执行是安全的）
+    void Promise.allSettled(
       cluster.keywords
         .slice(0, PREHEAT_KEYWORDS)
         .map((kw) => searchWithQuota(caseId, kw)),

@@ -55,7 +55,7 @@ export async function POST(request: Request) {
       ).choices[0].message.content;
       const parsed = extractJson<{ coherence?: number | string }>(raw);
       const value = typeof parsed.coherence === "string" ? Number(parsed.coherence) : parsed.coherence;
-      if (!Number.isFinite(value)) throw new Error("invalid coherence value");
+      if (value == null || !Number.isFinite(value)) throw new Error("invalid coherence value");
       coherence = QUOTA_SAFE_CLAMP(value);
     } catch {
       coherence = fallbackCoherence(body.statement, chosenLabels, citedExcerpts);
