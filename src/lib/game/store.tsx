@@ -123,29 +123,38 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       .catch(() => {});
   }, []);
 
-  // 授权在新标签页进行：点过「绑定知乎身份」后原地轮询，身份牌自动亮起（最多 3 分钟）
+  // 授权在新标签页进行：标记在点击时才写入，轮询必须每拍检查（挂载时查一次会漏）；
+  // 另外在窗口聚焦时立即查——玩家从授权页切回来的瞬间就亮牌。拿到身份即清标记。
   useEffect(() => {
-    if (!sessionStorage.getItem("tm_oauth_pending")) return;
-    let tries = 0;
-    const timer = setInterval(() => {
-      tries += 1;
-      if (tries > 60) {
-        sessionStorage.removeItem("tm_oauth_pending");
-        clearInterval(timer);
-        return;
-      }
+    const fetchProfile = () => {
       fetch("/api/oauth/user")
         .then((res) => (res.ok ? res.json() : null))
         .then((data: { profile?: { name: string; headline: string } } | null) => {
           if (data?.profile) {
             setState((s) => ({ ...s, profile: data.profile! }));
             sessionStorage.removeItem("tm_oauth_pending");
-            clearInterval(timer);
           }
         })
         .catch(() => {});
-    }, 3000);
-    return () => clearInterval(timer);
+    };
+    let ticks = 0;
+    const timer = setInterval(() => {
+      if (!sessionStorage.getItem("tm_oauth_pending")) return;
+      ticks += 1;
+      if (ticks > 80) {
+        sessionStorage.removeItem("tm_oauth_pending");
+        return;
+      }
+      fetchProfile();
+    }, 2500);
+    const onFocus = () => {
+      if (sessionStorage.getItem("tm_oauth_pending")) fetchProfile();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+    };
   }, []);
 
   useEffect(() => {
