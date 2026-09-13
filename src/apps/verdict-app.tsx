@@ -6,7 +6,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Stamp, Stars, TypeWriter } from "@/components/game";
-import { fetchBoard, submitVerdict } from "@/lib/game/api";
+import { fetchBoard, sharePin, submitVerdict } from "@/lib/game/api";
 import { sfx } from "@/lib/game/sfx";
 import { useGame, type VerdictResponse } from "@/lib/game/store";
 import type { VerdictSubmission } from "@/lib/types";
@@ -15,7 +15,7 @@ import type { AppProps } from "./types";
 const GRADE_TITLE: Record<string, string> = { S: "神探", A: "探长", B: "警员", C: "实习生" };
 
 export default function VerdictApp({ open }: AppProps) {
-  const { caseBrief, collected, playerId, result, setResult, resetAll } = useGame();
+  const { caseBrief, collected, playerId, profile, result, setResult, resetAll } = useGame();
   const [selections, setSelections] = useState<Record<string, string>>({});
   const [citations, setCitations] = useState<Record<string, string[]>>({});
   const [statement, setStatement] = useState("");
@@ -26,10 +26,59 @@ export default function VerdictApp({ open }: AppProps) {
   const [coreIssue, setCoreIssue] = useState<string | null>(null);
   const [coreOver, setCoreOver] = useState(false);
   const [bareConfirmed, setBareConfirmed] = useState(false);
+  const [shareState, setShareState] = useState<{ busy: boolean; token?: string; mock?: boolean; error?: string }>({ busy: false });
+  const [draftCopied, setDraftCopied] = useState(false);
 
   useEffect(() => {
     if (result) fetchBoard(result.caseId).then(setBoard).catch(() => setBoard([]));
   }, [result]);
+
+  /** 书记官金句：报告第一句够长的句子 */
+  function reportQuote(): string | undefined {
+    if (!result) return undefined;
+    const q = result.report
+      .replace(/^#+\s*/gm, "")
+      .split(/[。\n]/)
+      .map((s) => s.trim())
+      .find((s) => s.length >= 8);
+    return q?.slice(0, 60);
+  }
+
+  // 结案 → 发布知乎想法（进黑客松圈子）
+  async function handleShare() {
+    if (!result || shareState.busy || shareState.token) return;
+    setShareState({ busy: true });
+    try {
+      const data = await sharePin(result.caseId, {
+        total: result.score.total,
+        grade: result.score.grade,
+        quote: reportQuote(),
+      });
+      sfx.play("stamp");
+      setShareState({ busy: false, token: data.contentToken, mock: data.mock });
+    } catch (e) {
+      setShareState({ busy: false, error: e instanceof Error ? e.message : "发布失败" });
+    }
+  }
+
+  // 未登录：只取战报文案进剪贴板，玩家可去原题或圈子手动发布
+  async function handleCopyDraft() {
+    if (!result) return;
+    try {
+      const data = await sharePin(result.caseId, {
+        total: result.score.total,
+        grade: result.score.grade,
+        quote: reportQuote(),
+        dryRun: true,
+      });
+      await navigator.clipboard?.writeText(data.content);
+      sfx.play("click");
+      setDraftCopied(true);
+      setTimeout(() => setDraftCopied(false), 2000);
+    } catch {
+      setDraftCopied(false);
+    }
+  }
 
   if (!caseBrief) {
     return (
@@ -49,7 +98,7 @@ export default function VerdictApp({ open }: AppProps) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
-  }} onRestart={() => {
+  }} share={shareState} loggedIn={!!profile} onShare={() => void handleShare()} draftCopied={draftCopied} onCopyDraft={() => void handleCopyDraft()} onRestart={() => {
     resetAll();
     open("case");
   }} />;
@@ -226,12 +275,22 @@ function ClosingResult({
   board,
   copied,
   onCopy,
+  share,
+  loggedIn,
+  onShare,
+  draftCopied,
+  onCopyDraft,
   onRestart,
 }: {
   result: VerdictResponse;
   board: Array<{ playerId: string; score: number }>;
   copied: boolean;
   onCopy: () => void;
+  share: { busy: boolean; token?: string; mock?: boolean; error?: string };
+  loggedIn: boolean;
+  onShare: () => void;
+  draftCopied: boolean;
+  onCopyDraft: () => void;
   onRestart: () => void;
 }) {
   const [total, setTotal] = useState(0);
@@ -415,6 +474,42 @@ function ClosingResult({
           <button className="btn-brass px-6 py-2 font-[family-name:var(--font-dossier)] text-xs tracking-widest" onClick={onCopy}>
             {copied ? "✓ 已复制战绩" : "复制战绩分享"}
           </button>
+          <div className="w-full border-t border-ink-700 pt-3">
+            {loggedIn ? (
+              <button
+                className="w-full border border-signal-400/50 px-4 py-2 font-[family-name:var(--font-dossier)] text-xs tracking-widest text-signal-300 transition-colors hover:border-signal-300 hover:bg-signal-400/10 disabled:opacity-50"
+                disabled={share.busy || !!share.token}
+                onClick={onShare}
+              >
+                {share.token
+                  ? `✓ 已发布想法${share.mock ? "（本地模拟）" : ` · ${share.token.slice(0, 10)}…`}`
+                  : share.busy
+                    ? "发布中……"
+                    : "发布想法 → 黑客松脑洞补给站"}
+              </button>
+            ) : (
+              <div className="space-y-1.5">
+                <a
+                  href="/api/oauth/authorize"
+                  className="block w-full border border-brass-400/50 px-4 py-2 text-center font-[family-name:var(--font-dossier)] text-xs tracking-widest text-brass-300 transition-colors hover:bg-brass-600/15"
+                >
+                  绑定知乎身份，一键发布 →
+                </a>
+                <button
+                  className="w-full border border-ink-600 px-4 py-2 font-[family-name:var(--font-dossier)] text-xs tracking-widest text-paper-400 transition-colors hover:border-paper-400 hover:text-paper-200"
+                  onClick={onCopyDraft}
+                >
+                  {draftCopied ? "✓ 战报文案已复制，去原题粘贴发布" : "不登录，只复制战报文案"}
+                </button>
+              </div>
+            )}
+            <p className="mt-1.5 text-[9px] leading-relaxed tracking-wider text-paper-600">
+              {loggedIn
+                ? "以你的知乎身份把结案战报发进官方圈子（每小时限 5 条）。"
+                : "战报文案与登录发布完全一致——复制后可在原题下作答发布。"}
+              {share.error && <span className="text-blood-400"> ⚠ {share.error}</span>}
+            </p>
+          </div>
         </div>
         <div className="paper-card p-5">
           <h2 className="font-[family-name:var(--font-dossier)] text-xs tracking-[0.25em] text-brass-400">
