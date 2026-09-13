@@ -59,6 +59,9 @@ export async function POST(request: Request) {
       return Response.json({ error: "duplicate_clue", hint: "同一争议点不能重复指认证据" }, { status: 400 });
     }
   }
+  if (seenIssues.size !== brief.issues.length) {
+    return Response.json({ error: "incomplete_verdict", hint: "请为每个争议点选择立场后再提交" }, { status: 400 });
+  }
 
   // ① 陈词一致系数：唯一用 LLM 的评分项，封顶 15%，失败按 0
   let coherence = 0;
