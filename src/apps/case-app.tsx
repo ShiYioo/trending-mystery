@@ -23,7 +23,7 @@ export default function CaseApp({ open }: AppProps) {
   // 加载分步提示：与后端真实阶段对应（热榜缓存秒回 → 检索 1~2s → 聚类长尾）
   useEffect(() => {
     if (pendingRank === null) {
-      setElapsed(0);
+      queueMicrotask(() => setElapsed(0));
       return;
     }
     const timer = setInterval(() => setElapsed((s) => s + 1), 1000);
@@ -48,7 +48,7 @@ export default function CaseApp({ open }: AppProps) {
   );
 
   useEffect(() => {
-    if (!caseBrief) void load(1);
+    if (!caseBrief) queueMicrotask(() => void load(1));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
