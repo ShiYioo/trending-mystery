@@ -50,6 +50,50 @@ interface WinState {
 
 let uidSeq = 0;
 
+// 刘看山壁纸（知乎吉祥物）：桌面右下角的夜班搭档，动作跟随玩家状态——
+// 办案时用电脑、桌面清空时待机、后半夜（0-6 点，呼应 3D 房间里 2:47 的挂钟）打盹。
+const FOX_STATES = {
+  computer: { src: "/liukanshan/computer.gif", caption: "值守中" },
+  idle: { src: "/liukanshan/idle.gif", caption: "待机" },
+  sleepy: { src: "/liukanshan/sleepy.gif", caption: "后半夜 · 打盹" },
+} as const;
+const foxCache: HTMLImageElement[] = [];
+
+function FoxWallpaper({ working }: { working: boolean }) {
+  const [night, setNight] = useState(() => new Date().getHours() < 6);
+  useEffect(() => {
+    for (const state of Object.values(FOX_STATES)) {
+      const img = new Image();
+      img.src = state.src;
+      foxCache.push(img); // 持引用：三套动作预载入内存，切换时不清屏
+    }
+    const timer = setInterval(() => setNight(new Date().getHours() < 6), 60_000);
+    return () => clearInterval(timer);
+  }, []);
+  const fox = night ? FOX_STATES.sleepy : working ? FOX_STATES.computer : FOX_STATES.idle;
+  return (
+    <div
+      className="pointer-events-none absolute bottom-[-1%] right-[6%] z-0 flex select-none items-end gap-2"
+      title="值班搭档：刘看山"
+    >
+      <span className="mb-1 text-[9px] tracking-[0.3em] text-paper-600/80 [writing-mode:vertical-rl]">
+        刘看山 · {fox.caption}
+      </span>
+      {/* 素材为 320×320 原尺寸，渲染不超过原生分辨率，避免放大发糊 */}
+      {/* eslint-disable-next-line @next/next/no-img-element -- GIF 动图，next/image 会抽帧成静态图 */}
+      <img
+        src={fox.src}
+        alt="刘看山"
+        draggable={false}
+        style={{
+          height: "min(32vh, 300px)",
+          filter: "saturate(0.92) brightness(0.96) drop-shadow(0 0 26px rgba(143,228,210,0.16))",
+        }}
+      />
+    </div>
+  );
+}
+
 /** 窗口必须完整落在桌面内——关闭/最小化键永远可点（宽度按实际渲染值 min(meta.w, 桌面-24)） */
 function clampInto(w: WinState, rect: DOMRect): WinState {
   const meta = APP_META[w.id];
@@ -225,8 +269,11 @@ export function RetroOS() {
           ))}
         </div>
 
-        {/* 桌面水印 */}
-        <div className="pointer-events-none absolute bottom-3 right-4 z-0 text-right text-[10px] leading-relaxed tracking-widest text-paper-600/60">
+        {/* 刘看山壁纸 */}
+        <FoxWallpaper working={windows.some((w) => !w.min)} />
+
+        {/* 桌面水印（左下，给右下角的看山让位） */}
+        <div className="pointer-events-none absolute bottom-3 left-4 z-0 text-left text-[10px] leading-relaxed tracking-widest text-paper-600/60">
           热搜疑云 TRENDING MYSTERY
           <br />
           每日一案 · 知乎热榜驱动
