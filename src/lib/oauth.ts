@@ -145,6 +145,11 @@ export function getSessionToken(sessionId: string | null | undefined): string | 
   return s.token;
 }
 
+/** 登出：服务端会话即刻作废（token 本体不落地，无需撤销） */
+export function dropSession(sessionId: string | null | undefined): void {
+  if (sessionId) sessions.delete(sessionId);
+}
+
 export function readSessionCookie(request: Request): string | null {
   const cookie = request.headers.get("cookie") ?? "";
   const match = /(?:^|;\s*)tm_oauth_session=([^;]+)/.exec(cookie);

@@ -120,7 +120,8 @@ function clampInto(w: WinState, rect: DOMRect): WinState {
 }
 
 export function RetroOS() {
-  const { caseBrief, profile } = useGame();
+  const { caseBrief, profile, clearProfile } = useGame();
+  const [logoutArmed, setLogoutArmed] = useState(false);
   const [windows, setWindows] = useState<WinState[]>([]);
   const zRef = useRef(10);
   const desktopRef = useRef<HTMLDivElement>(null);
@@ -315,15 +316,35 @@ export function RetroOS() {
         )}
         <div className="ml-auto flex items-center gap-2">
           {profile ? (
-            <span className="flex items-center gap-1.5 border border-brass-400/50 px-2 py-0.5 text-[10px] text-brass-300">
+            <button
+              className="flex items-center gap-1.5 border border-brass-400/50 px-2 py-0.5 text-[10px] text-brass-300 hover:border-blood-400/60"
+              title={`${profile.headline}\n（点按登出）`}
+              onClick={() => {
+                // 二段确认：第一下亮红待确认，3 秒内再点才真退
+                if (!logoutArmed) {
+                  setLogoutArmed(true);
+                  window.setTimeout(() => setLogoutArmed(false), 3000);
+                  return;
+                }
+                setLogoutArmed(false);
+                sfx.play("click");
+                void fetch("/api/oauth/logout", { method: "POST" });
+                clearProfile();
+              }}
+            >
               <span className="flex h-4 w-4 items-center justify-center rounded-full bg-brass-600 text-[8px] text-ink-950">
                 {profile.name[0]}
               </span>
-              <span className="max-w-20 truncate">{profile.name}</span>
-            </span>
+              <span className={`max-w-20 truncate ${logoutArmed ? "text-blood-400" : ""}`}>
+                {logoutArmed ? "确认退出？" : profile.name}
+              </span>
+            </button>
           ) : (
             <a
               href="/api/oauth/authorize"
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => sessionStorage.setItem("tm_oauth_pending", "1")}
               className="border border-brass-400/50 px-2 py-0.5 text-[10px] tracking-wider text-brass-300 hover:bg-brass-600/20"
             >
               绑定知乎身份

@@ -72,6 +72,7 @@ interface GameStore extends GameState {
   setHistory: (history: ChatMessage[]) => void;
   setResult: (result: VerdictResponse) => void;
   resetAll: () => void;
+  clearProfile: () => void;
 }
 const STORAGE_KEY = "tm_game_v1";
 const PLAYER_KEY = "tm_player_id";
@@ -122,6 +123,31 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       .catch(() => {});
   }, []);
 
+  // 授权在新标签页进行：点过「绑定知乎身份」后原地轮询，身份牌自动亮起（最多 3 分钟）
+  useEffect(() => {
+    if (!sessionStorage.getItem("tm_oauth_pending")) return;
+    let tries = 0;
+    const timer = setInterval(() => {
+      tries += 1;
+      if (tries > 60) {
+        sessionStorage.removeItem("tm_oauth_pending");
+        clearInterval(timer);
+        return;
+      }
+      fetch("/api/oauth/user")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data: { profile?: { name: string; headline: string } } | null) => {
+          if (data?.profile) {
+            setState((s) => ({ ...s, profile: data.profile! }));
+            sessionStorage.removeItem("tm_oauth_pending");
+            clearInterval(timer);
+          }
+        })
+        .catch(() => {});
+    }, 3000);
+    return () => clearInterval(timer);
+  }, []);
+
   useEffect(() => {
     if (!state.playerId) return;
     localStorage.setItem(
@@ -167,9 +193,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     setState((s) => ({ ...emptyState, playerId: s.playerId }));
   }, []);
 
+  const clearProfile = useCallback(() => {
+    setState((s) => ({ ...s, profile: null }));
+  }, []);
+
   const store = useMemo<GameStore>(
-    () => ({ ...state, setCase, toggleCollect, isCollected, setHistory, setResult, resetAll }),
-    [state, setCase, toggleCollect, isCollected, setHistory, setResult, resetAll],
+    () => ({ ...state, setCase, toggleCollect, isCollected, setHistory, setResult, resetAll, clearProfile }),
+    [state, setCase, toggleCollect, isCollected, setHistory, setResult, resetAll, clearProfile],
   );
 
   return <GameContext.Provider value={store}>{children}</GameContext.Provider>;

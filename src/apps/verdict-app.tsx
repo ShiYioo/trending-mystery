@@ -489,12 +489,15 @@ function ClosingResult({
               </button>
             ) : (
               <div className="space-y-1.5">
-                <a
-                  href="/api/oauth/authorize"
-                  className="block w-full border border-brass-400/50 px-4 py-2 text-center font-[family-name:var(--font-dossier)] text-xs tracking-widest text-brass-300 transition-colors hover:bg-brass-600/15"
-                >
-                  绑定知乎身份，一键发布 →
-                </a>
+              <a
+                href="/api/oauth/authorize"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => sessionStorage.setItem("tm_oauth_pending", "1")}
+                className="block w-full border border-brass-400/50 px-4 py-2 text-center font-[family-name:var(--font-dossier)] text-xs tracking-widest text-brass-300 transition-colors hover:bg-brass-600/15"
+              >
+                绑定知乎身份，一键发布 →
+              </a>
                 <button
                   className="w-full border border-ink-600 px-4 py-2 font-[family-name:var(--font-dossier)] text-xs tracking-widest text-paper-400 transition-colors hover:border-paper-400 hover:text-paper-200"
                   onClick={onCopyDraft}
