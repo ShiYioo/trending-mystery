@@ -6,7 +6,6 @@
 
 import { cleanExcerpt, excerptFragment, groundedRatio, isGrounded, isRelatedTo } from "@/lib/clue/clean";
 import { normalizeKeyword } from "@/lib/clue/normalize";
-import { starRating } from "@/lib/clue/stars";
 import {
   applyWeights,
   buildClueCards,
