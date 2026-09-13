@@ -1,6 +1,7 @@
 // 窗口应用共享类型：AppId 与应用入口 props——四个房间 + 神探榜，全部住在 TM-01 里。
+// taskmgr 是彩蛋：不出桌面图标，点顶栏 TM-01 或 Ctrl+Alt+M 唤出。
 
-export type AppId = "case" | "search" | "interrogation" | "verdict" | "board";
+export type AppId = "case" | "search" | "interrogation" | "verdict" | "board" | "taskmgr";
 
 export interface OpenOptions {
   /** 检索预填关键词（案卷检索词 → 打开档案检索） */

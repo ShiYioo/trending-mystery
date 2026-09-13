@@ -12,6 +12,7 @@ import BoardApp from "@/apps/board-app";
 import CaseApp from "@/apps/case-app";
 import InterrogationApp from "@/apps/interrogation-app";
 import SearchApp from "@/apps/search-app";
+import TaskMgrApp from "@/apps/taskmgr-app";
 import VerdictApp from "@/apps/verdict-app";
 import type { AppId, OpenOptions } from "@/apps/types";
 
@@ -32,6 +33,7 @@ const APP_META: Record<AppId, AppMeta> = {
   interrogation: { title: "审问终端", glyph: "◑", w: 700, h: 590, minW: 440, minH: 380, accent: "text-blood-400" },
   verdict: { title: "结案程序", glyph: "⚖", w: 780, h: 620, minW: 460, minH: 400, accent: "text-brass-300" },
   board: { title: "今日神探榜", glyph: "№", w: 400, h: 420, minW: 300, minH: 300, accent: "text-signal-300" },
+  taskmgr: { title: "系统监视器", glyph: "⌁", w: 420, h: 460, minW: 320, minH: 320, accent: "text-signal-300" },
 };
 
 const ICONS: Array<{ id: AppId; label: string; no: string }> = [
@@ -184,6 +186,15 @@ export function RetroOS() {
     return () => clearTimeout(t);
   }, [open]);
 
+  // 彩蛋入口：Ctrl+Alt+M 唤出系统监视器（Ctrl+Shift+Esc 被 Windows 系统抢占，用不了）
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.altKey && e.key.toLowerCase() === "m") open("taskmgr");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
   const focus = (id: AppId) => {
     const z = ++zRef.current;
     setWindows((ws) => ws.map((w) => (w.id === id ? { ...w, z } : w)));
@@ -274,6 +285,14 @@ export function RetroOS() {
         return <VerdictApp {...props} />;
       case "board":
         return <BoardApp />;
+      case "taskmgr":
+        return (
+          <TaskMgrApp
+            {...props}
+            procs={windows.map((w) => ({ id: w.id, uid: w.uid, title: APP_META[w.id].title }))}
+            endTask={close}
+          />
+        );
     }
   };
 
@@ -281,7 +300,13 @@ export function RetroOS() {
     <div className="crt-signal flex h-full w-full flex-col bg-ink-950 font-[family-name:var(--font-dossier)]">
       {/* 顶栏 */}
       <div className="flex items-center gap-3 border-b border-signal-400/20 bg-ink-900/90 px-3 py-1.5">
-        <span className="text-[11px] tracking-[0.28em] text-brass-300">TM-01</span>
+        <button
+          onClick={() => open("taskmgr")}
+          className="text-[11px] tracking-[0.28em] text-brass-300 hover:text-brass-200 hover:underline"
+          title="系统监视器（Ctrl+Alt+M）"
+        >
+          TM-01
+        </button>
         <span className="text-[10px] tracking-widest text-paper-600">夜班侦探终端</span>
         {caseBrief && (
           <span className="hidden text-[10px] tracking-widest text-paper-600 sm:inline">
@@ -366,7 +391,10 @@ export function RetroOS() {
                 }}
                 className={w.min ? "pointer-events-none opacity-0" : ""}
               >
-                <div className="flex h-full flex-col overflow-hidden border border-signal-400/25 bg-ink-950/95 shadow-[0_22px_60px_rgba(0,0,0,0.65)] backdrop-blur-sm">
+                <div
+                  data-win-app={w.id}
+                  className="flex h-full flex-col overflow-hidden border border-signal-400/25 bg-ink-950/95 shadow-[0_22px_60px_rgba(0,0,0,0.65)] backdrop-blur-sm"
+                >
                   {/* 标题栏（拖拽区） */}
                   <div
                     className="win-titlebar flex select-none items-center gap-2 border-b border-ink-700 bg-ink-850/95 px-3 py-1.5"
