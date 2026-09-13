@@ -6,7 +6,8 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Stamp, Stars, TypeWriter } from "@/components/game";
-import { fetchBoard, sharePin, submitVerdict } from "@/lib/game/api";
+import { fetchBoard, submitVerdict } from "@/lib/game/api";
+import { renderPoster } from "@/lib/game/poster";
 import { sfx } from "@/lib/game/sfx";
 import { useGame, type VerdictResponse } from "@/lib/game/store";
 import type { VerdictSubmission } from "@/lib/types";
@@ -26,58 +27,57 @@ export default function VerdictApp({ open }: AppProps) {
   const [coreIssue, setCoreIssue] = useState<string | null>(null);
   const [coreOver, setCoreOver] = useState(false);
   const [bareConfirmed, setBareConfirmed] = useState(false);
-  const [shareState, setShareState] = useState<{ busy: boolean; token?: string; mock?: boolean; error?: string }>({ busy: false });
-  const [draftCopied, setDraftCopied] = useState(false);
+  const [poster, setPoster] = useState<{ busy: boolean; url?: string; blob?: Blob; copied?: boolean; error?: string }>({ busy: false });
 
   useEffect(() => {
     if (result) fetchBoard(result.caseId).then(setBoard).catch(() => setBoard([]));
   }, [result]);
 
-  /** 书记官金句：报告第一句够长的句子 */
-  function reportQuote(): string | undefined {
-    if (!result) return undefined;
-    const q = result.report
-      .replace(/^#+\s*/gm, "")
-      .split(/[。\n]/)
-      .map((s) => s.trim())
-      .find((s) => s.length >= 8);
-    return q?.slice(0, 60);
-  }
-
-  // 结案 → 发布知乎想法（进黑客松圈子）
-  async function handleShare() {
-    if (!result || shareState.busy || shareState.token) return;
-    setShareState({ busy: true });
+  // 战绩海报：既是成绩单又是宣传图——复制/下载即传播
+  async function handlePoster() {
+    if (!result || poster.busy || poster.url) return;
+    if (!caseBrief) return;
+    setPoster({ busy: true });
     try {
-      const data = await sharePin(result.caseId, {
-        total: result.score.total,
+      const blob = await renderPoster({
+        questionTitle: caseBrief.questionTitle,
+        caseId: result.caseId,
+        playerName: profile?.name ?? "匿名侦探",
         grade: result.score.grade,
-        quote: reportQuote(),
+        gradeTitle: GRADE_TITLE[result.score.grade],
+        total: result.score.total,
+        breakdown: result.score.breakdown,
+        winds: result.consensus.map((c) => {
+          const top = c.stances[0];
+          return { issue: c.title, label: top?.label ?? "—", pct: Math.round(top?.weight ?? 0) };
+        }),
+        siteUrl: window.location.host,
       });
       sfx.play("stamp");
-      setShareState({ busy: false, token: data.contentToken, mock: data.mock });
+      setPoster({ busy: false, url: URL.createObjectURL(blob), blob });
     } catch (e) {
-      setShareState({ busy: false, error: e instanceof Error ? e.message : "发布失败" });
+      setPoster({ busy: false, error: e instanceof Error ? e.message : "生成失败" });
     }
   }
 
-  // 未登录：只取战报文案进剪贴板，玩家可去原题或圈子手动发布
-  async function handleCopyDraft() {
-    if (!result) return;
+  async function copyPoster() {
+    if (!poster.blob) return;
     try {
-      const data = await sharePin(result.caseId, {
-        total: result.score.total,
-        grade: result.score.grade,
-        quote: reportQuote(),
-        dryRun: true,
-      });
-      await navigator.clipboard?.writeText(data.content);
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": poster.blob })]);
       sfx.play("click");
-      setDraftCopied(true);
-      setTimeout(() => setDraftCopied(false), 2000);
+      setPoster((p) => ({ ...p, copied: true }));
+      setTimeout(() => setPoster((p) => ({ ...p, copied: false })), 2000);
     } catch {
-      setDraftCopied(false);
+      downloadPoster(); // 剪贴板不可用（非安全上下文/权限拒绝）→ 退下载
     }
+  }
+
+  function downloadPoster() {
+    if (!poster.url) return;
+    const a = document.createElement("a");
+    a.href = poster.url;
+    a.download = `热搜疑云-战绩-${result?.caseId ?? "case"}.png`;
+    a.click();
   }
 
   if (!caseBrief) {
@@ -98,7 +98,7 @@ export default function VerdictApp({ open }: AppProps) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
-  }} share={shareState} loggedIn={!!profile} onShare={() => void handleShare()} draftCopied={draftCopied} onCopyDraft={() => void handleCopyDraft()} onRestart={() => {
+  }} poster={poster} onPoster={() => void handlePoster()} onCopyPoster={() => void copyPoster()} onDownloadPoster={downloadPoster} onRestart={() => {
     resetAll();
     open("case");
   }} />;
@@ -275,22 +275,20 @@ function ClosingResult({
   board,
   copied,
   onCopy,
-  share,
-  loggedIn,
-  onShare,
-  draftCopied,
-  onCopyDraft,
+  poster,
+  onPoster,
+  onCopyPoster,
+  onDownloadPoster,
   onRestart,
 }: {
   result: VerdictResponse;
   board: Array<{ playerId: string; score: number }>;
   copied: boolean;
   onCopy: () => void;
-  share: { busy: boolean; token?: string; mock?: boolean; error?: string };
-  loggedIn: boolean;
-  onShare: () => void;
-  draftCopied: boolean;
-  onCopyDraft: () => void;
+  poster: { busy: boolean; url?: string; blob?: Blob; copied?: boolean; error?: string };
+  onPoster: () => void;
+  onCopyPoster: () => void;
+  onDownloadPoster: () => void;
   onRestart: () => void;
 }) {
   const [total, setTotal] = useState(0);
@@ -475,42 +473,41 @@ function ClosingResult({
             {copied ? "✓ 已复制战绩" : "复制战绩分享"}
           </button>
           <div className="w-full border-t border-ink-700 pt-3">
-            {loggedIn ? (
+            {poster.url ? (
+              <div className="space-y-2">
+                {/* eslint-disable-next-line @next/next/no-img-element -- Canvas 生成的本地对象 URL */}
+                <img
+                  src={poster.url}
+                  alt="结案战绩海报"
+                  className="max-h-72 w-full border border-brass-400/40 object-contain"
+                />
+                <div className="flex gap-2">
+                  <button
+                    className="flex-1 border border-signal-400/50 px-3 py-2 font-[family-name:var(--font-dossier)] text-xs tracking-widest text-signal-300 transition-colors hover:border-signal-300 hover:bg-signal-400/10"
+                    onClick={onCopyPoster}
+                  >
+                    {poster.copied ? "✓ 已复制图片，去粘贴分享" : "复制图片"}
+                  </button>
+                  <button
+                    className="flex-1 border border-ink-600 px-3 py-2 font-[family-name:var(--font-dossier)] text-xs tracking-widest text-paper-400 transition-colors hover:border-paper-400 hover:text-paper-200"
+                    onClick={onDownloadPoster}
+                  >
+                    下载 PNG
+                  </button>
+                </div>
+              </div>
+            ) : (
               <button
                 className="w-full border border-signal-400/50 px-4 py-2 font-[family-name:var(--font-dossier)] text-xs tracking-widest text-signal-300 transition-colors hover:border-signal-300 hover:bg-signal-400/10 disabled:opacity-50"
-                disabled={share.busy || !!share.token}
-                onClick={onShare}
+                disabled={poster.busy}
+                onClick={onPoster}
               >
-                {share.token
-                  ? `✓ 已发布想法${share.mock ? "（本地模拟）" : ` · ${share.token.slice(0, 10)}…`}`
-                  : share.busy
-                    ? "发布中……"
-                    : "发布想法 → 黑客松脑洞补给站"}
+                {poster.busy ? "绘制中……" : "生成战绩海报"}
               </button>
-            ) : (
-              <div className="space-y-1.5">
-              <a
-                href="/api/oauth/authorize"
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => sessionStorage.setItem("tm_oauth_pending", "1")}
-                className="block w-full border border-brass-400/50 px-4 py-2 text-center font-[family-name:var(--font-dossier)] text-xs tracking-widest text-brass-300 transition-colors hover:bg-brass-600/15"
-              >
-                绑定知乎身份，一键发布 →
-              </a>
-                <button
-                  className="w-full border border-ink-600 px-4 py-2 font-[family-name:var(--font-dossier)] text-xs tracking-widest text-paper-400 transition-colors hover:border-paper-400 hover:text-paper-200"
-                  onClick={onCopyDraft}
-                >
-                  {draftCopied ? "✓ 战报文案已复制，去原题粘贴发布" : "不登录，只复制战报文案"}
-                </button>
-              </div>
             )}
             <p className="mt-1.5 text-[9px] leading-relaxed tracking-wider text-paper-600">
-              {loggedIn
-                ? "以你的知乎身份把结案战报发进官方圈子（每小时限 5 条）。"
-                : "战报文案与登录发布完全一致——复制后可在原题下作答发布。"}
-              {share.error && <span className="text-blood-400"> ⚠ {share.error}</span>}
+              精绘战绩海报——成绩单也是游戏邀请函，复制/下载即分享。
+              {poster.error && <span className="text-blood-400"> ⚠ {poster.error}</span>}
             </p>
           </div>
         </div>

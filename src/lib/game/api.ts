@@ -32,20 +32,6 @@ export async function submitVerdict(body: ClosingRequest): Promise<VerdictRespon
   );
 }
 
-/** 结案分享：把战报发布成知乎想法（进黑客松圈子）；dryRun 只取文案（未登录可用）；mock 模式返回模拟结果 */
-export async function sharePin(
-  caseId: string,
-  payload: { total: number; grade: string; quote?: string; dryRun?: boolean },
-): Promise<{ mock?: boolean; dryRun?: boolean; contentToken?: string; content: string }> {
-  return jsonOrThrow(
-    await fetch("/api/share", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ caseId, ...payload }),
-    }),
-  );
-}
-
 export async function fetchBoard(
   caseId: string,
 ): Promise<Array<{ playerId: string; score: number }>> {

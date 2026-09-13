@@ -150,6 +150,29 @@ export function dropSession(sessionId: string | null | undefined): void {
   if (sessionId) sessions.delete(sessionId);
 }
 
+/**
+ * 榜单显示名（服务端解析，不信客户端）：会话有效则取知乎身份——
+ * real 模式 Bearer 用户 token 调 /user 取顶层 fullname；mock 模式取模拟资料名；
+ * 匿名返回 null，调用方回退 playerId。
+ */
+export async function resolveProfileName(request: Request): Promise<string | null> {
+  const token = getSessionToken(readSessionCookie(request));
+  if (!token) return null;
+  if (getOAuthMode() === "mock") {
+    return getMockProfile(token)?.name ?? null;
+  }
+  try {
+    const res = await fetch("https://openapi.zhihu.com/user", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const body = (await res.json().catch(() => null)) as { fullname?: unknown } | null;
+    const name = body?.fullname;
+    return typeof name === "string" && name ? name.slice(0, 32) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function readSessionCookie(request: Request): string | null {
   const cookie = request.headers.get("cookie") ?? "";
   const match = /(?:^|;\s*)tm_oauth_session=([^;]+)/.exec(cookie);

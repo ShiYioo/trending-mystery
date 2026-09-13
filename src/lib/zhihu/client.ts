@@ -1,7 +1,6 @@
-// 知乎开放接口 HTTP 薄封装：热榜 / 站内搜索 / 直答（唯一 LLM）/ 社区开放能力（发布想法）。
-// 字段规格照官方 http-api.md（核验 2026-07-16）与 quickstart 接口目录（核验 2026-09-13）；前端永不直连。
+// 知乎开放接口 HTTP 薄封装：热榜 / 站内搜索 / 直答（唯一 LLM）。
+// 字段规格照官方 http-api.md（核验 2026-07-16）；前端永不直连。
 
-import { createHmac } from "node:crypto";
 import { getZhihuAccessSecret } from "../env";
 import type {
   ChatChunk,
@@ -139,59 +138,6 @@ async function* streamSse(body: ReadableStream<Uint8Array>): AsyncGenerator<Chat
   }
 }
 
-// ===== 社区开放能力 · 发布想法（quickstart 接口目录，核验 2026-09-13） =====
-// POST openapi.zhihu.com/openapi/publish/pin，发进指定圈子，平台限频 5 条/小时。
-// 鉴权：X-App-Key 传用户 OAuth token，X-Sign = base64(HMAC-SHA256(appSecret, 签名串))。
-
-export interface PublishPinInput {
-  /** 用户 OAuth access_token（X-App-Key 与签名串里用的都是它） */
-  userToken: string;
-  /** 应用密钥（与 Access Secret、OAuth App Key 互不相同） */
-  appSecret: string;
-  title?: string;
-  content: string;
-  imageUrls?: string[];
-  ringId: string;
-}
-
-/** 签名串：app_key:{userToken}|ts:{秒级时间戳}|logid:{日志ID}|extra_info:{额外信息} */
-export function buildPinSignature(
-  userToken: string,
-  appSecret: string,
-  timestampSec: number,
-  logId: string,
-  extraInfo = "",
-): string {
-  const signStr = `app_key:${userToken}|ts:${timestampSec}|logid:${logId}|extra_info:${extraInfo}`;
-  return createHmac("sha256", appSecret).update(signStr).digest("base64");
-}
-
-export async function publishPin(input: PublishPinInput): Promise<{ contentToken: string }> {
-  const ts = Math.floor(Date.now() / 1000);
-  const logId = `trending-mystery-${ts}-${Math.random().toString(36).slice(2, 8)}`;
-  const sign = buildPinSignature(input.userToken, input.appSecret, ts, logId);
-  const res = await fetch("https://openapi.zhihu.com/openapi/publish/pin", {
-    method: "POST",
-    headers: {
-      "X-App-Key": input.userToken,
-      "X-Timestamp": String(ts),
-      "X-Log-Id": logId,
-      "X-Sign": sign,
-      "X-Extra-Info": "",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      title: input.title,
-      content: input.content,
-      image_urls: input.imageUrls ?? [],
-      ring_id: input.ringId,
-    }),
-  });
-  const body = (await res.json().catch(() => null)) as
-    | { status?: number; msg?: string; data?: { content_token?: string } | null }
-    | null;
-  if (!res.ok || body?.status !== 0 || !body?.data?.content_token) {
-    throw new ZhihuApiError(res.status, body?.msg ?? `publish_pin failed (HTTP ${res.status})`);
-  }
-  return { contentToken: body.data.content_token };
-}
+// ===== 社区开放能力 · 发布想法 =====
+// 已移除（2026-09-13 决策）：该 API 的发帖身份绑定申请密钥的项目账号、无法代表玩家，
+// 分享改走「战绩海报」客户端生成（见 lib/game/poster.ts）——复制/下载即传播，零外呼。

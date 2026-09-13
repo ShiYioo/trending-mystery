@@ -3,6 +3,7 @@
 
 import { buildCoherenceMessages, buildReportMessages } from "@/lib/case/prompts";
 import { llmEnabled } from "@/lib/env";
+import { resolveProfileName } from "@/lib/oauth";
 import { caseKey, kvGetJson, recordScore } from "@/lib/redis";
 import { chat, extractJson } from "@/lib/zhihu";
 import { scoreVerdict } from "@/lib/verdict/scoring";
@@ -91,8 +92,8 @@ export async function POST(request: Request) {
     }
   }
 
-  // ② 查表算分 + 榜单（playerId 是客户端自由串，截断防超长成员膨胀 ZSET）
-  const playerId = (body.playerId || "anonymous").slice(0, 64);
+  // ② 查表算分 + 榜单——榜上显示名服务端解析：登录挂知乎名，匿名回退 playerId（截断防膨胀 ZSET）
+  const playerId = ((await resolveProfileName(request)) ?? (body.playerId || "anonymous")).slice(0, 32);
   const score = scoreVerdict(brief, body.verdicts, coherence);
   await recordScore(body.caseId, playerId, score.total);
 

@@ -21,16 +21,6 @@ export function getRedisUrl(): string {
   return v;
 }
 
-/** 社区开放能力（发布想法）的应用密钥——与 Access Secret、OAuth App Key 是三个不同凭证 */
-export function getZhihuAppSecret(): string | null {
-  return process.env.ZHIHU_APP_SECRET ?? null;
-}
-
-/** 发布想法目标圈子：默认黑客松脑洞补给站（2026 黑客松指定圈子之一） */
-export function getPinRingId(): string {
-  return process.env.ZHIHU_PIN_RING_ID ?? "2029619126742656657";
-}
-
 /**
  * 直答额度开关：ZHIHU_LLM_DISABLED=1 时全站跳过直答调用——
  * 案件生成走降级聚类、审问室返回友好提示、结案走模板文案。额度恢复后删掉该变量即可。
