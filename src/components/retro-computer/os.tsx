@@ -20,15 +20,18 @@ interface AppMeta {
   glyph: string;
   w: number;
   h: number;
+  /** 可缩放到的下限：再小内容就没法读了 */
+  minW: number;
+  minH: number;
   accent: string;
 }
 
 const APP_META: Record<AppId, AppMeta> = {
-  case: { title: "案卷档案", glyph: "▤", w: 760, h: 580, accent: "text-brass-300" },
-  search: { title: "档案检索", glyph: "⌕", w: 860, h: 600, accent: "text-signal-300" },
-  interrogation: { title: "审问终端", glyph: "◑", w: 700, h: 590, accent: "text-blood-400" },
-  verdict: { title: "结案程序", glyph: "⚖", w: 780, h: 620, accent: "text-brass-300" },
-  board: { title: "今日神探榜", glyph: "№", w: 400, h: 420, accent: "text-signal-300" },
+  case: { title: "案卷档案", glyph: "▤", w: 760, h: 580, minW: 460, minH: 360, accent: "text-brass-300" },
+  search: { title: "档案检索", glyph: "⌕", w: 860, h: 600, minW: 520, minH: 380, accent: "text-signal-300" },
+  interrogation: { title: "审问终端", glyph: "◑", w: 700, h: 590, minW: 440, minH: 380, accent: "text-blood-400" },
+  verdict: { title: "结案程序", glyph: "⚖", w: 780, h: 620, minW: 460, minH: 400, accent: "text-brass-300" },
+  board: { title: "今日神探榜", glyph: "№", w: 400, h: 420, minW: 300, minH: 300, accent: "text-signal-300" },
 };
 
 const ICONS: Array<{ id: AppId; label: string; no: string }> = [
@@ -46,6 +49,10 @@ interface WinState {
   min: boolean;
   x: number;
   y: number;
+  w: number; // 实际尺寸：默认取 meta，右下角可拖拽缩放
+  h: number;
+  max: boolean; // 最大化（铺满桌面），restore 存还原矩形
+  restore?: { x: number; y: number; w: number; h: number };
 }
 
 let uidSeq = 0;
@@ -94,13 +101,17 @@ function FoxWallpaper({ working }: { working: boolean }) {
   );
 }
 
-/** 窗口必须完整落在桌面内——关闭/最小化键永远可点（宽度按实际渲染值 min(meta.w, 桌面-24)） */
+/** 尺寸钳在 [内容下限, 桌面] 之间，窗口完整落在桌面内——关闭/缩放键永远可点 */
 function clampInto(w: WinState, rect: DOMRect): WinState {
   const meta = APP_META[w.id];
-  const winW = Math.min(meta.w, rect.width - 24);
-  const winH = Math.min(meta.h, rect.height);
+  const maxW = Math.max(meta.minW, rect.width - 8);
+  const maxH = Math.max(meta.minH, rect.height - 8);
+  const winW = Math.min(Math.max(w.w, meta.minW), maxW);
+  const winH = Math.min(Math.max(w.h, meta.minH), maxH);
   return {
     ...w,
+    w: winW,
+    h: winH,
     x: Math.min(Math.max(w.x, 0), Math.max(0, rect.width - winW - 8)),
     y: Math.min(Math.max(w.y, 0), Math.max(0, rect.height - winH - 8)),
   };
@@ -112,6 +123,7 @@ export function RetroOS() {
   const zRef = useRef(10);
   const desktopRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ id: AppId; offX: number; offY: number; rect: DOMRect } | null>(null);
+  const resizeRef = useRef<{ id: AppId; startX: number; startY: number; startW: number; startH: number; rect: DOMRect } | null>(null);
   const [searchSeed, setSearchSeed] = useState<{ keyword: string; nonce: number } | undefined>();
   const [clock, setClock] = useState("--:--:--");
 
@@ -140,18 +152,27 @@ export function RetroOS() {
         min: false,
         x: 96 + idx * 34,
         y: 10 + idx * 28,
+        w: meta.w,
+        h: meta.h,
+        max: false,
       };
       return [...ws, rect ? clampInto(placed, rect) : placed];
     });
     sfx.play("flip");
   }, []);
 
-  // 浏览器窗口尺寸变化时把所有窗口拉回桌面内
+  // 浏览器窗口尺寸变化时把所有窗口拉回桌面内（最大化的重新铺满）
   useEffect(() => {
     const onResize = () => {
       const rect = desktopRef.current?.getBoundingClientRect();
       if (!rect) return;
-      setWindows((ws) => ws.map((w) => clampInto(w, rect)));
+      setWindows((ws) =>
+        ws.map((w) =>
+          w.max
+            ? { ...w, x: 0, y: 0, w: rect.width, h: rect.height }
+            : clampInto(w, rect),
+        ),
+      );
     };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
@@ -175,6 +196,22 @@ export function RetroOS() {
     sfx.play("click");
     setWindows((ws) => ws.filter((w) => w.id !== id));
   };
+  const toggleMax = (w: WinState) => {
+    sfx.play("click");
+    const rect = desktopRef.current?.getBoundingClientRect();
+    setWindows((ws) =>
+      ws.map((item) => {
+        if (item.id !== w.id) return item;
+        if (item.max) {
+          const r = item.restore ?? { x: 40, y: 24, w: APP_META[item.id].w, h: APP_META[item.id].h };
+          return rect ? clampInto({ ...item, ...r, max: false, restore: undefined }, rect) : { ...item, ...r, max: false, restore: undefined };
+        }
+        return rect
+          ? { ...item, max: true, restore: { x: item.x, y: item.y, w: item.w, h: item.h }, x: 0, y: 0, w: rect.width, h: rect.height }
+          : item;
+      }),
+    );
+  };
 
   const onTitlePointerDown = (e: React.PointerEvent, w: WinState) => {
     // 最小化/关闭按钮：放行点击，不拖拽不捕获——否则 setPointerCapture 会吞掉按钮的第一次 click
@@ -196,6 +233,32 @@ export function RetroOS() {
   };
   const onTitlePointerUp = () => {
     dragRef.current = null;
+  };
+
+  // 右下角缩放：pointer capture 在手柄上，尺寸/位置一次性钳制，不与标题栏拖拽打架
+  const onGripPointerDown = (e: React.PointerEvent, w: WinState) => {
+    if (w.max || (e.target as HTMLElement).closest("button")) return;
+    const rect = desktopRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    resizeRef.current = { id: w.id, startX: e.clientX, startY: e.clientY, startW: w.w, startH: w.h, rect };
+    focus(w.id);
+  };
+  const onGripPointerMove = (e: React.PointerEvent) => {
+    const drag = resizeRef.current;
+    if (!drag) return;
+    const next = {
+      w: drag.startW + (e.clientX - drag.startX),
+      h: drag.startH + (e.clientY - drag.startY),
+    };
+    setWindows((ws) =>
+      ws.map((item) =>
+        item.id === drag.id && !item.max ? clampInto({ ...item, ...next }, drag.rect) : item,
+      ),
+    );
+  };
+  const onGripPointerUp = () => {
+    resizeRef.current = null;
   };
 
   const renderApp = (id: AppId) => {
@@ -295,8 +358,10 @@ export function RetroOS() {
                   left: w.x,
                   top: w.y,
                   zIndex: w.z,
-                  width: `min(${meta.w}px, calc(100% - 24px))`,
-                  height: `min(${meta.h}px, 100%)`,
+                  width: w.w,
+                  height: w.h,
+                  maxWidth: "100%", // 极小桌面时 CSS 兜底，状态尺寸可能大于桌面
+                  maxHeight: "100%",
                   pointerEvents: w.min ? "none" : "auto",
                 }}
                 className={w.min ? "pointer-events-none opacity-0" : ""}
@@ -309,7 +374,7 @@ export function RetroOS() {
                     onPointerMove={onTitlePointerMove}
                     onPointerUp={onTitlePointerUp}
                     onPointerCancel={onTitlePointerUp}
-                    onDoubleClick={() => minimize(w.id)}
+                    onDoubleClick={() => toggleMax(w)}
                   >
                     <span className={`text-xs ${meta.accent}`}>{meta.glyph}</span>
                     <span className="text-[11px] tracking-[0.2em] text-paper-200">{meta.title}</span>
@@ -325,6 +390,13 @@ export function RetroOS() {
                         —
                       </button>
                       <button
+                        onClick={() => toggleMax(w)}
+                        className="flex h-4 w-4 items-center justify-center border border-ink-600 text-[8px] leading-none text-paper-400 hover:border-brass-400 hover:text-brass-300"
+                        title={w.max ? "还原" : "最大化"}
+                      >
+                        {w.max ? "❐" : "▢"}
+                      </button>
+                      <button
                         onClick={() => close(w.id)}
                         className="flex h-4 w-4 items-center justify-center border border-ink-600 text-[9px] leading-none text-paper-400 hover:border-blood-400 hover:text-blood-400"
                         title="关闭"
@@ -337,6 +409,21 @@ export function RetroOS() {
                   <div className="flex-1 overflow-y-auto font-[family-name:var(--font-detective)]">
                     {renderApp(w.id)}
                   </div>
+                  {/* 缩放手柄：最大化时隐藏 */}
+                  {!w.max && (
+                    <div
+                      className="group absolute bottom-0 right-0 z-10 flex h-4 w-4 cursor-nwse-resize touch-none select-none items-end justify-end"
+                      title="拖拽调整窗口大小"
+                      onPointerDown={(e) => onGripPointerDown(e, w)}
+                      onPointerMove={onGripPointerMove}
+                      onPointerUp={onGripPointerUp}
+                      onPointerCancel={onGripPointerUp}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="text-paper-600 group-hover:text-brass-300">
+                        <path d="M12 3 3 12 M12 8 8 12 M12 12" stroke="currentColor" strokeWidth="1.2" fill="none" />
+                      </svg>
+                    </div>
+                  )}
                 </div>
               </motion.div>
             );
