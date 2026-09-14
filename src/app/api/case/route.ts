@@ -15,7 +15,7 @@ import {
   toPublicBrief,
 } from "@/lib/case/assembly";
 import { buildClusterFixMessages, buildClusterMessages, type ClusterResult } from "@/lib/case/prompts";
-import type { CaseBrief, ChatMessage, Issue, SearchData } from "@/lib/types";
+import type { CaseBrief, ChatMessage, Issue, SearchData, ZhidaModel } from "@/lib/types";
 import { llmEnabled } from "@/lib/env";
 import {
   cacheAside,
@@ -93,11 +93,12 @@ export async function GET(request: Request) {
         picked.Title +
         " " +
         clusterItems.map((it) => cleanExcerpt(it.ContentText).slice(0, 120)).join(" ");
-      const ask = async (messages: ChatMessage[]) =>
-        extractJson<ClusterResult>((await chat("zhida-thinking-1p5", messages)).choices[0].message.content);
+      const ask = async (messages: ChatMessage[], model: ZhidaModel = "zhida-thinking-1p5") =>
+        extractJson<ClusterResult>((await chat(model, messages)).choices[0].message.content);
       try {
         let candidate = await ask(buildClusterMessages(picked.Title, clusterInput));
         // 质检：虚构的争议点/简报 → 带审校意见返工一次（争议点仍由 LLM 出，只是打回重写）
+        // 返工只是小修，用 fast 档：几秒出结果，整链路不叠两次 thinking 的 60s+（2026-09-14 实测 91s）
         const badTitles = candidate.issues
           .filter((iss) => groundedRatio(iss.title, material) < 0.5)
           .map((iss) => iss.title);
@@ -106,6 +107,7 @@ export async function GET(request: Request) {
           try {
             candidate = await ask(
               buildClusterFixMessages(picked.Title, clusterInput, candidate, badTitles, briefingBad),
+              "zhida-fast-1p5",
             );
           } catch {
             // 返工调用失败则保留草稿，走下方终检兜底
