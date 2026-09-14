@@ -4,6 +4,7 @@
 // localStorage 持久化——匿名侦探 ID 跨局复用（OAuth 登录优先，M3 接入时替换）。
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { fetchCase } from "@/lib/game/api";
 import type { ChatMessage, PublicCaseBrief } from "@/lib/types";
 
 export interface CollectedCard {
@@ -63,6 +64,9 @@ interface GameState {
   history: ChatMessage[];
   result: VerdictResponse | null;
   profile: { name: string; headline: string } | null;
+  /** 本地进度锚点：案卷唯一事实源在服务端，客户端进度绑 caseId——案换世界清 */
+  savedCaseId: string | null;
+  savedRank: number;
 }
 
 interface GameStore extends GameState {
@@ -87,6 +91,8 @@ const emptyState: GameState = {
   history: [],
   result: null,
   profile: null,
+  savedCaseId: null,
+  savedRank: 1,
 };
 
 const GameContext = createContext<GameStore | null>(null);
@@ -94,27 +100,52 @@ const GameContext = createContext<GameStore | null>(null);
 export function GameProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<GameState>(emptyState);
 
-  // 客户端挂载后恢复持久化状态（避免 SSR 水合不一致），并拉取登录身份
+  // 客户端挂载：恢复进度锚点（案卷快照不再本地持久化——服务端是唯一事实源），
+  // 随即向服务端取当前案：caseId 与锚点一致 → 恢复档案袋/审问/结案进度；不一致 → 清档重来
   useEffect(() => {
     const pid = localStorage.getItem(PLAYER_KEY) ?? crypto.randomUUID();
     localStorage.setItem(PLAYER_KEY, pid);
-    let restored: Partial<GameState> & { savedAt?: number } = {};
+    let saved: {
+      caseId?: string;
+      rank?: number;
+      collected?: CollectedCard[];
+      history?: ChatMessage[];
+      result?: VerdictResponse | null;
+      savedAt?: number;
+    } = {};
     try {
-      restored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}") as Partial<GameState> & {
-        savedAt?: number;
-      };
+      saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}") as typeof saved;
     } catch {
-      restored = {};
+      saved = {};
     }
-    // 陈案清理：服务端案件 24h 过期，过期档案的审问/结案只会 404——不如开局就清干净
-    const stale = !restored.savedAt || Date.now() - restored.savedAt > SAVE_TTL_MS;
-    setState({
-      ...emptyState,
-      ...(stale
-        ? { caseBrief: null, collected: [], history: [], result: null }
-        : restored),
+    // 陈档清理：锚点超过 20h（服务端案件 24h TTL 留 4h 裕量）视为死案
+    const stale = !saved.savedAt || Date.now() - saved.savedAt > SAVE_TTL_MS;
+    const savedCaseId = stale ? null : saved.caseId ?? null;
+    const savedRank = !stale && saved.rank ? saved.rank : 1;
+    setState((s) => ({
+      ...s,
       playerId: pid,
-    });
+      savedCaseId,
+      savedRank,
+      collected: savedCaseId ? saved.collected ?? [] : [],
+      history: savedCaseId ? saved.history ?? [] : [],
+      result: savedCaseId ? saved.result ?? null : null,
+    }));
+    // 开机取案藏在 3D 开场期间跑（服务端缓存命中毫秒级；降级案 10 分钟自愈后自动拿到完整版）
+    void fetchCase(savedRank)
+      .then((brief) => {
+        setState((s) => {
+          const sameCase = savedCaseId === brief.caseId;
+          return {
+            ...s,
+            caseBrief: brief,
+            savedCaseId: brief.caseId,
+            savedRank: brief.hotRank ?? savedRank,
+            ...(sameCase ? {} : { collected: [], history: [], result: null }),
+          };
+        });
+      })
+      .catch(() => {});
     fetch("/api/oauth/user")
       .then((res) => (res.ok ? res.json() : null))
       .then((data: { profile?: { name: string; headline: string } } | null) => {
@@ -162,17 +193,26 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
-        caseBrief: state.caseBrief,
+        caseId: state.caseBrief?.caseId ?? state.savedCaseId,
+        rank: state.caseBrief?.hotRank ?? state.savedRank,
         collected: state.collected,
         history: state.history,
         result: state.result,
         savedAt: Date.now(),
       }),
     );
-  }, [state.playerId, state.caseBrief, state.collected, state.history, state.result]);
+  }, [state.playerId, state.caseBrief, state.savedCaseId, state.savedRank, state.collected, state.history, state.result]);
 
   const setCase = useCallback((caseBrief: PublicCaseBrief) => {
-    setState((s) => ({ ...s, caseBrief, collected: [], history: [], result: null }));
+    setState((s) => ({
+      ...s,
+      caseBrief,
+      savedCaseId: caseBrief.caseId,
+      savedRank: caseBrief.hotRank ?? s.savedRank,
+      collected: [],
+      history: [],
+      result: null,
+    }));
   }, []);
 
   const toggleCollect = useCallback((card: CollectedCard) => {

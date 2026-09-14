@@ -10,29 +10,16 @@ import { BootSequence } from "@/components/retro-computer/boot";
 import { MonitorShell } from "@/components/retro-computer/crt";
 import { LoginScreen } from "@/components/retro-computer/login";
 import { RetroOS } from "@/components/retro-computer/os";
-import { fetchCase } from "@/lib/game/api";
-import { useGame } from "@/lib/game/store";
 
 type Phase = "init" | "desk" | "computer";
 
 export default function Experience() {
   const [phase, setPhase] = useState<Phase>("init");
-  const { caseBrief, setCase } = useGame();
 
   useEffect(() => {
-    // 首帧后进入桌面（避免 SSR 水合不一致）
+    // 首帧后进入桌面（避免 SSR 水合不一致）；今日案件由 GameProvider 开机预取
     const t = setTimeout(() => setPhase("desk"), 80);
     return () => clearTimeout(t);
-  }, []);
-
-  // 开场期间预载今日案件
-  useEffect(() => {
-    if (!caseBrief) {
-      fetchCase(1)
-        .then(setCase)
-        .catch(() => {});
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (phase === "init") {
