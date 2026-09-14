@@ -33,6 +33,8 @@ export const maxDuration = 60;
 const HOTLIST_TTL = 3600;
 const SEARCH_TTL = 6 * 3600;
 const CASE_TTL = 24 * 3600;
+/** 降级案短缓存：自愈窗口，别让一个人的网差变成全服一整天 */
+const DEGRADED_CASE_TTL = 10 * 60;
 /** 送入聚类的回答上限（摘要级语料，thinking 档上下文可控） */
 const CLUSTER_MAX_ITEMS = 12;
 /** 预热检索词数量（玩家搜这些词时命中缓存，零外呼） */
@@ -169,7 +171,9 @@ export async function GET(request: Request) {
       suggestedKeywords: cluster.keywords,
       degraded,
     };
-    await kvSetJson(caseKey(caseId), brief, CASE_TTL);
+    // 降级案只缓存 10 分钟：一次瞬时抖动（限频/网络）不该让全服玩一天速记版；
+    // 短缓存既防连环轰 LLM，又给下一个十分钟窗自动重试完整质量的机会
+    await kvSetJson(caseKey(caseId), brief, degraded ? DEGRADED_CASE_TTL : CASE_TTL);
 
     // 预热检索词：玩家搜这些词时命中缓存，零配额——不阻塞响应，后台跑完即可
     // （自管 node 进程常驻，响应返回后继续执行是安全的）
