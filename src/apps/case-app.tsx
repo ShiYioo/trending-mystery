@@ -3,7 +3,7 @@
 // 应用 01 · 案卷档案：案卷封皮（简报打字机+音效）、争议点、检索词、换案。
 // 由房间一移植：检索词与"开始搜查"改为 OS 内打开档案检索应用。
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Stamp, TypeWriter } from "@/components/game";
 import { fetchCase } from "@/lib/game/api";
@@ -19,6 +19,7 @@ export default function CaseApp({ open }: AppProps) {
   const [pendingRank, setPendingRank] = useState<number | null>(null);
   const [rankSel, setRankSel] = useState("1");
   const [elapsed, setElapsed] = useState(0);
+  const appRef = useRef<HTMLDivElement>(null);
 
   // 加载分步提示：与后端真实阶段对应（热榜缓存秒回 → 检索 1~2s → 聚类长尾）
   useEffect(() => {
@@ -28,6 +29,14 @@ export default function CaseApp({ open }: AppProps) {
     }
     const timer = setInterval(() => setElapsed((s) => s + 1), 1000);
     return () => clearInterval(timer);
+  }, [pendingRank]);
+
+  // 档案窗口内容独立滚动；换案时把刚出现的进度卡带回可视区域，避免看起来像卡住。
+  useEffect(() => {
+    if (pendingRank === null) return;
+    requestAnimationFrame(() => {
+      appRef.current?.parentElement?.scrollTo({ top: 0, behavior: "smooth" });
+    });
   }, [pendingRank]);
 
   const load = useCallback(
@@ -67,7 +76,7 @@ export default function CaseApp({ open }: AppProps) {
   }
 
   return (
-    <div className="space-y-6 p-5 md:p-7">
+    <div ref={appRef} className="space-y-6 p-5 md:p-7">
       <div className="flex flex-wrap items-end justify-between gap-4 border-b border-ink-700/70 pb-4">
         <div>
           <p className="eyebrow"><span className="status-dot" />CASE FILE / DAILY DROP</p>
